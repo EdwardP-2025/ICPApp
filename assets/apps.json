@@ -1,0 +1,60 @@
+[
+  {
+    "name": "Plug Wallet",
+    "icon": "PlugWallet/icon.png",
+    "subtitle": "Your gateway to the Internet Computer",
+    "description": "Plug is a browser extension wallet for the Internet Computer, allowing you to manage ICP, cycles, and interact with dapps.",
+    "tags": ["wallet", "icp", "extension"],
+    "screenshots": [
+      "PlugWallet/image1.png",
+      "PlugWallet/image2.png",
+      "PlugWallet/image3.png"
+    ],
+    "website": "https://plugwallet.ooo/",
+    "apkUrl": "https://play.google.com/store/apps/details?id=co.psychedelic.plug",
+    "packageName": "co.psychedelic.plug",
+    "developer": "Psychedelic",
+    "version": "1.25.0",
+    "lastUpdated": "2024-05-01",
+    "rating": 4.7,
+    "reviews": []
+  },
+  {
+    "name": "DSCVR",
+    "icon": "DSCVR/icon.png",
+    "subtitle": "Decentralized Social Network",
+    "description": "DSCVR is a decentralized social content platform built on the Internet Computer, enabling communities and creators to thrive.",
+    "tags": ["social", "community", "dapp"],
+    "screenshots": [
+      "DSCVR/image1.png",
+      "DSCVR/image2.png",
+      "DSCVR/image3.png"
+    ],
+    "website": "https://dscvr.one/",
+    "apkUrl": "https://dscvr.one/",
+    "developer": "DSCVR Team",
+    "version": "2.3.0",
+    "lastUpdated": "2024-04-20",
+    "rating": 4.5,
+    "reviews": []
+  },
+  {
+    "name": "OpenChat",
+    "icon": "OpenChat/icon.png",
+    "subtitle": "Decentralized Messaging",
+    "description": "OpenChat is a decentralized, censorship-resistant chat platform on the Internet Computer, supporting groups, DMs, and more.",
+    "tags": ["chat", "messaging", "dapp"],
+    "screenshots": [
+      "OpenChat/image1.png",
+      "OpenChat/image2.png",
+      "OpenChat/image3.png"
+    ],
+    "website": "https://oc.app/",
+    "apkUrl": "https://oc.app/",
+    "developer": "OpenChat Team",
+    "version": "1.8.2",
+    "lastUpdated": "2024-04-15",
+    "rating": 4.6,
+    "reviews": []
+  }
+] 

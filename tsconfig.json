@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "types": [],
+    "jsx": "react-native",
+    "lib": ["es2015", "es2020", "dom"],
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node"
+  }
+}
