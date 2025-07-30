@@ -1,209 +1,289 @@
-import 'react-native-get-random-values';
-import { Buffer } from 'buffer';
-declare const global: any;
-global.Buffer = Buffer;
-
-import React, { useEffect } from 'react';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React, { useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StatusBar,
+  StyleSheet,
+  Linking,
+} from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { UserProvider, useUser } from './src/contexts/UserContext';
-import * as Linking from 'expo-linking';
+import { NetworkProvider } from './src/contexts/NetworkContext';
 import HomeScreen from './src/screens/HomeScreen';
 import MarketScreen from './src/screens/MarketScreen';
-import MineScreen from './src/screens/MineScreen';
 import WalletScreen from './src/screens/WalletScreen';
-import DappWebViewScreen from './src/screens/DappWebViewScreen';
-import InternetIdentityLoginScreen from './src/screens/InternetIdentityLoginScreen';
-import PermissionsScreen from './src/screens/PermissionsScreen';
+import MineScreen from './src/screens/MineScreen';
 import TransferScreen from './src/screens/TransferScreen';
-import MiniAppsScreen from './src/screens/MiniAppsScreen';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { NetworkProvider } from './src/contexts/NetworkContext';
-import AppDetailScreen from './src/screens/AppDetailScreen';
-import { PaperProvider, MD3LightTheme as DefaultTheme } from 'react-native-paper';
+import TransactionHistoryScreen from './src/screens/TransactionHistoryScreen';
+import AppStoreScreen from './src/screens/AppStoreScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
+import InternetIdentityLoginScreen from './src/screens/InternetIdentityLoginScreen';
 
-const theme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: '#b71c1c',
-    onPrimary: '#fff',
-    secondary: '#4CAF50',
-    onSecondary: '#fff',
-    background: '#fff',
-    surface: '#fff',
-    onSurface: '#222',
-    error: '#b71c1c',
-    outline: '#b71c1c',
-    // Add more overrides as needed
-  },
-};
-
-const Tab = createBottomTabNavigator();
-const HomeStack = createNativeStackNavigator();
-const MineStack = createNativeStackNavigator();
-const WalletStack = createNativeStackNavigator();
-const MarketStack = createNativeStackNavigator();
-
-function HomeStackScreen() {
-  return (
-    <HomeStack.Navigator>
-      <HomeStack.Screen name="HomeMain" component={HomeScreen} options={{ headerShown: false }} />
-      <HomeStack.Screen name="DappWebView" component={DappWebViewScreen} options={{ headerShown: false }} />
-      <HomeStack.Screen name="InternetIdentityLogin" component={InternetIdentityLoginScreen} options={{ headerShown: false }} />
-    </HomeStack.Navigator>
-  );
+interface ErrorBoundaryState {
+  hasError: boolean;
 }
 
-function MineStackScreen() {
-  return (
-    <MineStack.Navigator>
-      <MineStack.Screen name="MineMain" component={MineScreen} options={{ headerShown: false }} />
-      <MineStack.Screen name="InternetIdentityLogin" component={InternetIdentityLoginScreen} options={{ headerShown: false }} />
-      <MineStack.Screen name="Permissions" component={PermissionsScreen} options={{ headerShown: false }} />
-    </MineStack.Navigator>
-  );
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
 }
 
-function WalletStackScreen() {
-  return (
-    <WalletStack.Navigator>
-      <WalletStack.Screen name="WalletMain" component={WalletScreen} options={{ headerShown: false }} />
-      <WalletStack.Screen name="Transfer" component={TransferScreen} options={{ headerShown: false }} />
-      <WalletStack.Screen name="MiniApps" component={MiniAppsScreen} options={{ title: 'Mini Apps' }} />
-    </WalletStack.Navigator>
-  );
-}
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
-function MarketStackScreen() {
-  return (
-    <MarketStack.Navigator>
-      <MarketStack.Screen name="MarketMain" component={MarketScreen} options={{ headerShown: false }} />
-      <MarketStack.Screen name="AppDetail" component={AppDetailScreen} options={{ title: 'App Detail' }} />
-    </MarketStack.Navigator>
-  );
-}
+  static getDerivedStateFromError(error: any): ErrorBoundaryState {
+    return { hasError: true };
+  }
 
-// Deep link handler component
-function DeepLinkHandler({ children }: { children: React.ReactNode }) {
-  const navigationRef = useNavigationContainerRef();
-  const { login, user } = useUser();
+  componentDidCatch(error: any, errorInfo: any) {
+    console.log('Error caught by boundary:', error, errorInfo);
+  }
 
-  // Monitor user state changes and navigate when logged in
-  useEffect(() => {
-    if (user.loggedIn && navigationRef.isReady()) {
-      navigationRef.navigate('Mine' as never);
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text>Something went wrong. Please restart the app.</Text>
+        </View>
+      );
     }
-  }, [user.loggedIn, navigationRef]);
+
+    return this.props.children;
+  }
+}
+
+const TABS = [
+  { id: 'Home', title: 'Home', icon: '🏠' },
+  { id: 'Market', title: 'App Store', icon: '🛒' },
+  { id: 'Wallet', title: 'Wallet', icon: '💰' },
+  { id: 'Mine', title: 'Mine', icon: '👤' },
+];
+
+function TabNavigator() {
+  const [activeTab, setActiveTab] = useState('Home');
+  const { user } = useUser();
+  const [currentScreen, setCurrentScreen] = useState<'main' | 'transfer' | 'history' | 'appstore' | 'editprofile'>('main');
+
+  const handleTabPress = useCallback((tabId: string) => {
+    setActiveTab(tabId);
+    setCurrentScreen('main');
+  }, []);
+
+  const handleNavigateToTransfer = useCallback(() => {
+    setCurrentScreen('transfer');
+  }, []);
+
+  const handleNavigateToHistory = useCallback(() => {
+    setCurrentScreen('history');
+  }, []);
+
+  const handleNavigateToAppStore = useCallback(() => {
+    setCurrentScreen('appstore');
+  }, []);
+
+  const handleNavigateToEditProfile = useCallback(() => {
+    setCurrentScreen('editprofile');
+  }, []);
+
+  const handleBackToMain = useCallback(() => {
+    setCurrentScreen('main');
+  }, []);
+
+  const renderTabContent = useCallback(() => {
+    if (currentScreen === 'transfer') {
+      return <TransferScreen />;
+    }
+    if (currentScreen === 'history') {
+      return <TransactionHistoryScreen />;
+    }
+    if (currentScreen === 'appstore') {
+      return <AppStoreScreen />;
+    }
+    if (currentScreen === 'editprofile') {
+      return <EditProfileScreen navigation={{ goBack: handleBackToMain }} />;
+    }
+
+    switch (activeTab) {
+      case 'Home':
+        return <HomeScreen onNavigateToTransfer={handleNavigateToTransfer} onNavigateToHistory={handleNavigateToHistory} onNavigateToAppStore={handleNavigateToAppStore} />;
+      case 'Market':
+        return <AppStoreScreen />;
+      case 'Wallet':
+        return <WalletScreen onNavigateToTransfer={handleNavigateToTransfer} onNavigateToHistory={handleNavigateToHistory} />;
+      case 'Mine':
+        return <MineScreen navigation={{ navigate: handleNavigateToEditProfile }} />;
+      default:
+        return <HomeScreen onNavigateToTransfer={handleNavigateToTransfer} onNavigateToHistory={handleNavigateToHistory} onNavigateToAppStore={handleNavigateToAppStore} />;
+    }
+  }, [activeTab, currentScreen, handleNavigateToTransfer, handleNavigateToHistory, handleNavigateToAppStore, handleNavigateToEditProfile, handleBackToMain]);
+
+  const renderContent = useCallback(() => {
+    if (currentScreen === 'main') {
+      return (
+        <>
+          <View style={styles.content}>
+            {renderTabContent()}
+          </View>
+          <View style={styles.tabBar}>
+            {TABS.map(tab => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.tab, activeTab === tab.id && styles.activeTab]}
+                onPress={() => handleTabPress(tab.id)}
+              >
+                <Text style={[styles.tabIcon, activeTab === tab.id && styles.activeTabLabel]}>
+                  {tab.icon}
+                </Text>
+                <Text style={[styles.tabLabel, activeTab === tab.id && styles.activeTabLabel]}>
+                  {tab.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      );
+    } else {
+      return (
+        <>
+          <View style={styles.subHeader}>
+            <TouchableOpacity style={styles.backButton} onPress={handleBackToMain}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.subHeaderTitle}>
+              {currentScreen === 'transfer' ? 'Transfer ICP' :
+               currentScreen === 'history' ? 'Transaction History' :
+               currentScreen === 'appstore' ? 'App Store' :
+               currentScreen === 'editprofile' ? 'Edit Profile' : 
+               activeTab === 'Market' ? 'App Store' : ''}
+            </Text>
+            {currentScreen === 'editprofile' && (
+              <TouchableOpacity style={styles.saveButton}>
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.content}>
+            {renderTabContent()}
+          </View>
+        </>
+      );
+    }
+  }, [user.loggedIn, activeTab, currentScreen, handleBackToMain, handleTabPress, renderTabContent]);
+
+  return renderContent();
+}
+
+function AppContent() {
+  const { user } = useUser();
 
   useEffect(() => {
-    let handled = false;
     const handleDeepLink = (event: { url: string }) => {
-      if (handled) return;
-      const parsed = Linking.parse(event.url);
-      
-      if (parsed.scheme === 'icpapp' && parsed.hostname === 'login' && parsed.queryParams?.principal) {
-        const principal = parsed.queryParams.principal as string;
-        
-        // Update user state immediately
-        login(principal);
-        handled = true;
-        
-        // Force navigation after a short delay
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('Mine' as never);
-          }
-        }, 500);
-        
-      } else if (parsed.scheme === 'icpapp' && parsed.hostname === 'login' && parsed.queryParams?.error) {
-        const error = parsed.queryParams.error as string;
-        // Handle login error - could show an alert or navigate to error screen
-        handled = true;
-        
-      } else if (parsed.scheme === 'icpapp' && parsed.hostname === 'logout') {
-        // App state is already cleared in UserContext.logout()
-        // Just navigate to Mine tab to show login screen
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('Mine' as never);
-        }
-        handled = true;
+      if (event.url.includes('auth')) {
+        console.log('Deep link received:', event.url);
       }
     };
-    
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-    
-    // Check if app was opened with a link
-    Linking.getInitialURL().then((url: string | null) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    });
-    
-    return () => subscription.remove();
-  }, [login, navigationRef, user]);
 
-  return (
-    <NavigationContainer ref={navigationRef}>{children}</NavigationContainer>
-  );
+    Linking.addEventListener('url', handleDeepLink);
+
+    return () => {
+    };
+  }, []);
+
+  // Show login screen if user is not logged in
+  if (!user.loggedIn) {
+    return <InternetIdentityLoginScreen />;
+  }
+
+  return <TabNavigator />;
 }
 
 export default function App() {
   return (
-    <PaperProvider theme={theme}>
+    <ErrorBoundary>
       <NetworkProvider>
         <UserProvider>
-          <DeepLinkHandler>
-            <Tab.Navigator>
-              <Tab.Screen
-                name="Home"
-                component={HomeStackScreen}
-                options={{
-                  tabBarLabel: 'Home',
-                  tabBarIcon: ({ color, size }) => (
-                    <MaterialCommunityIcons name="home" color={color} size={size} />
-                  ),
-                  headerShown: false,
-                }}
-              />
-              <Tab.Screen
-                name="Market"
-                component={MarketStackScreen}
-                options={{
-                  tabBarLabel: 'Market',
-                  tabBarIcon: ({ color, size }) => (
-                    <MaterialCommunityIcons name="circle-slice-8" color={color} size={size} />
-                  ),
-                  headerShown: false,
-                }}
-              />
-              <Tab.Screen
-                name="Wallet"
-                component={WalletStackScreen}
-                options={{
-                  tabBarLabel: 'Wallet',
-                  tabBarIcon: ({ color, size }) => (
-                    <MaterialCommunityIcons name="wallet" color={color} size={size} />
-                  ),
-                  headerShown: false,
-                }}
-              />
-              <Tab.Screen
-                name="Mine"
-                component={MineStackScreen}
-                options={{
-                  tabBarLabel: 'Mine',
-                  tabBarIcon: ({ color, size }) => (
-                    <MaterialCommunityIcons name="account" color={color} size={size} />
-                  ),
-                  headerShown: false,
-                }}
-              />
-            </Tab.Navigator>
-          </DeepLinkHandler>
+          <AppContent />
         </UserProvider>
       </NetworkProvider>
-    </PaperProvider>
+    </ErrorBoundary>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  subHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#b71c1c',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  backButton: {
+    padding: 4,
+  },
+  subHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  content: {
+    flex: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    paddingBottom: 20,
+    paddingTop: 10,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  activeTab: {
+  },
+  tabIcon: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  activeTabLabel: {
+    color: '#b71c1c',
+    fontWeight: 'bold',
+  },
+  saveButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#b71c1c',
+  },
+  saveButtonText: {
+    color: '#b71c1c',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+});

@@ -1,305 +1,391 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Linking } from 'react-native';
-import { WebView } from 'react-native-webview';
-import { useNavigation } from '@react-navigation/native';
-import { useUser } from '../contexts/UserContext';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  SafeAreaView,
+  TextInput,
+  ScrollView,
+  AppState,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { internetIdentityService, InternetIdentityProfile } from '../services/InternetIdentityService';
+import { useUser } from '../contexts/UserContext';
 
 const InternetIdentityLoginScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
+  const [loading, setLoading] = useState(false);
+  const [principal, setPrincipal] = useState('2vxsx-fae');
+  const [nickname, setNickname] = useState('');
+  const [authenticating, setAuthenticating] = useState(false);
   const { login } = useUser();
-  const [isLoading, setIsLoading] = useState(true);
-  const [webViewKey, setWebViewKey] = useState(0);
-  const webViewRef = useRef<WebView>(null);
-  const [showIssueModal, setShowIssueModal] = useState(false);
-  const [issueMessage, setIssueMessage] = useState('');
 
-  // Internet Identity URL (production)
-  const II_URL = 'https://identity.ic0.app/';
-  const STATUS_URL = 'https://status.internetcomputer.org/';
+  // Check for existing Internet Identity profile
+  useEffect(() => {
+    checkExistingProfile();
+  }, []);
 
-  const handleMessage = (event: any) => {
+  // Monitor app state changes to reset authenticating state
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active' && authenticating) {
+        console.log('📱 App became active - checking for authentication result');
+        // Check if we have a profile after returning to app
+        setTimeout(async () => {
+          try {
+            const profile = await internetIdentityService.getCurrentProfile();
+            if (profile && profile.isAuthenticated && profile.principal !== 'pending') {
+              console.log('✅ Found authenticated profile after app return:', profile);
+              login(profile.principal);
+            } else {
+              console.log('⏰ No authenticated profile found - resetting state');
+              setAuthenticating(false);
+            }
+          } catch (error) {
+            console.log('❌ Error checking profile after app return:', error);
+            setAuthenticating(false);
+          }
+        }, 1000); // Wait 1 second for deep link to process
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, [authenticating, login]);
+
+  const checkExistingProfile = async () => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === 'II_LOGIN_SUCCESS') {
-        // Extract principal and other data from II
-        const { principal, userNumber } = data;
-        login(principal);
-        Alert.alert('Success', 'Successfully logged in with Internet Identity!', [
-          { text: 'OK', onPress: () => navigation.navigate('Mine') }
-        ]);
-      } else if (data.type === 'II_LOGIN_ERROR') {
-        Alert.alert('Error', 'Failed to login with Internet Identity. Please try again.');
-      } else if (data.type === 'II_ISSUE_DETECTED') {
-        setIssueMessage(data.message || 'There may be ongoing issues with Internet Identity.');
-        setShowIssueModal(true);
+      const profile = await internetIdentityService.getCurrentProfile();
+      if (profile && profile.isAuthenticated) {
+        console.log('Found existing Internet Identity profile:', profile);
+        // Auto-login with existing profile
+        login(profile.principal);
       }
     } catch (error) {
-      console.log('WebView message error:', error);
+      console.log('Failed to check existing profile:', error);
     }
   };
 
-  const injectJavaScript = `
-    (function() {
-      // Listen for II login events
-      window.addEventListener('message', function(event) {
-        if (event.origin !== 'https://identity.ic0.app') return;
-        try {
-          const data = event.data;
-          if (data && data.type === 'II_LOGIN_SUCCESS') {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'II_LOGIN_SUCCESS',
-              principal: data.principal,
-              userNumber: data.userNumber
-            }));
-          } else if (data && data.type === 'II_LOGIN_ERROR') {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'II_LOGIN_ERROR',
-              error: data.error
-            }));
-          }
-        } catch (error) {
-          // ignore
+  const handleRealInternetIdentityLogin = async () => {
+    setLoading(true);
+    setAuthenticating(true);
+    
+    try {
+      console.log('🚀 Starting real Internet Identity login...');
+      
+      const result = await internetIdentityService.authenticate();
+      
+      if (result.success) {
+        console.log('✅ Internet Identity opened successfully');
+        
+        if (result.pending) {
+          Alert.alert(
+            '🌐 Internet Identity Login',
+            '✅ Internet Identity opened successfully!\n\n📋 Next steps:\n1. Complete authentication on the Internet Identity site\n2. You\'ll be redirected back to the app\n3. Real principal will be captured automatically\n\n⏰ Waiting for authentication completion...',
+            [{ text: 'OK' }]
+          );
+          
+          // Reset authenticating state after showing instructions
+          setAuthenticating(false);
+          
+        } else {
+          // Don't show success alert - let the app navigate to home screen automatically
+          // The UserContext will handle the login state change
+          console.log('✅ Login successful, navigating to home screen...');
         }
-      });
-      // Detect "Check ongoing issues" or similar warnings in the DOM
-      setInterval(function() {
-        var issueNode = document.querySelector('body');
-        if (issueNode && issueNode.innerText && issueNode.innerText.match(/Check ongoing issues|service disruption|maintenance|try again later/i)) {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'II_ISSUE_DETECTED',
-            message: 'Internet Identity may be experiencing issues. Please check the status or try again later.'
-                }));
-        }
-      }, 2000);
-      true;
-    })();
-  `;
-
-  const handleLoadEnd = () => {
-    setIsLoading(false);
+        
+      } else {
+        console.log('❌ Internet Identity login failed:', result.error);
+        
+        Alert.alert(
+          '❌ Login Failed', 
+          `${result.error}\n\n🔧 Alternative options:\n• Use Manual Login with a test principal\n• Check your internet connection`,
+          [
+            { text: 'Manual Login', onPress: () => setAuthenticating(false) },
+            { text: 'OK', onPress: () => setAuthenticating(false) }
+          ]
+        );
+      }
+      
+    } catch (error) {
+      console.log('❌ Internet Identity login error:', error);
+      
+      Alert.alert(
+        '❌ Login Error', 
+        'Failed to authenticate with Internet Identity.\n\n🔧 Please try:\n• Manual login with a test principal\n• Check your internet connection',
+        [
+          { text: 'Manual Login', onPress: () => setAuthenticating(false) },
+          { text: 'OK', onPress: () => setAuthenticating(false) }
+        ]
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRefresh = () => {
-    setWebViewKey(prev => prev + 1);
-    setIsLoading(true);
-  };
+  const handleManualLogin = async () => {
+    if (!principal.trim()) {
+      Alert.alert('Error', 'Please enter a valid principal ID');
+      return;
+    }
 
-  const handleOpenInBrowser = () => {
-    Linking.openURL(II_URL);
-  };
-
-  const handleOpenStatus = () => {
-    Linking.openURL(STATUS_URL);
+    setLoading(true);
+    
+    try {
+      console.log('Manual Internet Identity login with principal:', principal);
+      
+      const result = await internetIdentityService.authenticateWithPrincipal(principal.trim(), nickname.trim());
+      
+      if (result.success && result.profile) {
+        console.log('Manual login successful:', result.profile);
+        
+        login(result.profile.principal, []);
+        
+        // Don't show alert - let the app navigate to home screen automatically
+        // The UserContext will handle the login state change
+        
+      } else {
+        console.log('Manual login failed:', result.error);
+        Alert.alert('Login Failed', result.error || 'Authentication failed');
+      }
+      
+    } catch (error) {
+      console.log('Manual login error:', error);
+      Alert.alert('Login Error', 'Failed to authenticate with principal');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color="#b71c1c" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Internet Identity Login</Text>
-        <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#b71c1c" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Loading indicator */}
-      {isLoading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#b71c1c" />
-          <Text style={styles.loadingText}>Loading Internet Identity...</Text>
-        </View>
-      )}
-
-      {/* WebView */}
-      <WebView
-        key={webViewKey}
-        ref={webViewRef}
-        source={{ uri: II_URL }}
-        style={styles.webview}
-        onMessage={handleMessage}
-        onLoadEnd={handleLoadEnd}
-        injectedJavaScript={injectJavaScript}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        allowsBackForwardNavigationGestures={false}
-        userAgent="ICPApp/1.0"
-      />
-
-      {/* Instructions */}
-      <View style={styles.instructionsContainer}>
-        <Text style={styles.instructionsTitle}>How to login:</Text>
-        <Text style={styles.instructionsText}>
-          1. Click "Login with Internet Identity" on the page{"\n"}
-          2. Choose your authentication method (device, security key, etc.){"\n"}
-          3. Complete the authentication process{"\n"}
-          4. You'll be automatically logged in to the app
-        </Text>
-        <TouchableOpacity style={styles.openBrowserBtn} onPress={handleOpenInBrowser}>
-          <MaterialCommunityIcons name="open-in-new" size={18} color="#b71c1c" />
-          <Text style={styles.openBrowserText}>Open in Browser</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Issue Modal */}
-      <Modal
-        visible={showIssueModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowIssueModal(false)}
+    <SafeAreaView style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Internet Identity Issue</Text>
-            <Text style={styles.modalMessage}>{issueMessage}</Text>
-            <TouchableOpacity style={styles.statusBtn} onPress={handleOpenStatus}>
-              <Text style={styles.statusBtnText}>Check DFINITY Status</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowIssueModal(false)}>
-              <Text style={styles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
+        <View style={styles.header}>
+          <MaterialCommunityIcons name="shield-lock" size={80} color="#b71c1c" />
+          <Text style={styles.title}>Internet Identity Login</Text>
+          <Text style={styles.subtitle}>
+            Secure authentication for the Internet Computer
+          </Text>
+        </View>
+
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Principal ID (for manual login)</Text>
+            <TextInput
+              style={styles.input}
+              value={principal}
+              onChangeText={setPrincipal}
+              placeholder="Enter your Internet Identity principal"
+              placeholderTextColor="#999"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Nickname (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={nickname}
+              onChangeText={setNickname}
+              placeholder="Enter a nickname for your profile"
+              placeholderTextColor="#999"
+              autoCapitalize="words"
+            />
           </View>
         </View>
-      </Modal>
-    </View>
+
+        <View style={styles.loginOptions}>
+          <TouchableOpacity
+            style={[styles.loginButton, styles.realButton]}
+            onPress={handleRealInternetIdentityLogin}
+            disabled={loading || authenticating}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : authenticating ? (
+              <>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.loginButtonText}>Authenticating...</Text>
+              </>
+            ) : (
+              <>
+                <MaterialCommunityIcons name="web" size={24} color="#fff" />
+                <Text style={styles.loginButtonText}>Login with Internet Identity</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {authenticating && (
+            <TouchableOpacity
+              style={[styles.loginButton, styles.resetButton]}
+              onPress={() => {
+                setAuthenticating(false);
+                Alert.alert('Reset', 'Authentication state reset. You can try again.');
+              }}
+            >
+              <MaterialCommunityIcons name="refresh" size={24} color="#666" />
+              <Text style={[styles.loginButtonText, styles.resetButtonText]}>
+                Reset State
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.loginButton, styles.manualButton]}
+            onPress={handleManualLogin}
+            disabled={loading || authenticating}
+          >
+            <MaterialCommunityIcons name="account-key" size={24} color="#b71c1c" />
+            <Text style={[styles.loginButtonText, styles.manualButtonText]}>
+              Manual Login
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.info}>
+          <Text style={styles.infoTitle}>Real Internet Identity Integration</Text>
+          <Text style={styles.infoText}>
+            • One-click login opens Internet Identity site{'\n'}
+            • Create or sign in to your Internet Identity{'\n'}
+            • Get redirected back to app with real identity{'\n'}
+            • Use real authenticated principal for IC operations
+          </Text>
+          
+          <Text style={styles.infoTitle}>Manual Login</Text>
+          <Text style={styles.infoText}>
+            For testing, you can use these principals:{'\n'}
+            • 2vxsx-fae (anonymous){'\n'}
+            • aaaaa-aa-aaa-aaaaa-aaa (test){'\n'}
+            • bbbbb-bb-bbb-bbbbb-bbb (test)
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#222',
-  },
-  refreshButton: {
-    padding: 8,
-  },
-  loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
-  },
-  webview: {
+  scrollView: {
     flex: 1,
   },
-  instructionsContainer: {
-    padding: 16,
-    backgroundColor: '#f8f8f8',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  scrollContent: {
+    flexGrow: 1,
+    padding: 20,
+    justifyContent: 'center',
   },
-  instructionsTitle: {
-    fontSize: 16,
+  header: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  title: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#222',
+    color: '#333',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  form: {
+    marginBottom: 30,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
   },
-  instructionsText: {
+  input: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  loginOptions: {
+    marginBottom: 30,
+  },
+  loginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  realButton: {
+    backgroundColor: '#b71c1c',
+  },
+  manualButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#b71c1c',
+  },
+  loginButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 12,
+  },
+  manualButtonText: {
+    color: '#b71c1c',
+  },
+  resetButton: {
+    backgroundColor: '#e0e0e0',
+    borderWidth: 1,
+    borderColor: '#ccc',
+  },
+  resetButtonText: {
+    color: '#666',
+  },
+  info: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  infoText: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
-    flex: 1,
-  },
-  openBrowserBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#b71c1c',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  openBrowserText: {
-    color: '#b71c1c',
-    fontSize: 14,
-    marginLeft: 4,
-    fontWeight: 'bold',
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    width: 300,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#b71c1c',
-    marginBottom: 12,
-  },
-  modalMessage: {
-    fontSize: 15,
-    color: '#222',
     marginBottom: 16,
-    textAlign: 'center',
-  },
-  statusBtn: {
-    backgroundColor: '#b71c1c',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginBottom: 10,
-  },
-  statusBtnText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  closeBtn: {
-    backgroundColor: '#eee',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  closeBtnText: {
-    color: '#b71c1c',
-    fontWeight: 'bold',
-    fontSize: 15,
   },
 });
 

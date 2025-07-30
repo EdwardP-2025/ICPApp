@@ -1,0 +1,40 @@
+{
+  "canisters": {
+    "icp_app_store": {
+      "type": "motoko",
+      "main": "src/icp_app_store/main.mo",
+      "candid": "src/icp_app_store/icp_app_store.did"
+    },
+    "icp_app_frontend": {
+      "type": "assets",
+      "source": ["dist"],
+      "dependencies": ["icp_app_store"]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "",
+      "args": ""
+    },
+    "canister_http": {
+      "enabled": false
+    },
+    "proguard": {
+      "enabled": false
+    },
+    "rust": {
+      "args": ""
+    }
+  },
+  "dfx": "0.15.0",
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    },
+    "ic": {
+      "providers": ["https://ic0.app"]
+    }
+  },
+  "version": 1
+} 

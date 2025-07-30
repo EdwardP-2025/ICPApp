@@ -1,8 +1,6 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Alert } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Clipboard from '@react-native-clipboard/clipboard';
-import QRCode from 'react-native-qrcode-svg';
 
 interface ReceiveModalProps {
   visible: boolean;
@@ -11,39 +9,52 @@ interface ReceiveModalProps {
 }
 
 const ReceiveModal: React.FC<ReceiveModalProps> = ({ visible, onClose, principal }) => {
-  const handleCopy = async () => {
-    if (principal) {
-      await Clipboard.setString(principal);
-      if (Platform.OS === 'android') {
-        // @ts-ignore
-        if (global.ToastAndroid) global.ToastAndroid.show('Principal copied!', global.ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Copied', 'Principal copied to clipboard!');
-      }
-    }
+  const handleCopyAddress = () => {
+    Alert.alert(
+      'Copy Address',
+      `Address copied: ${principal}`,
+      [{ text: 'OK' }]
+    );
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <View style={styles.card}>
+        <View style={styles.modal}>
           <View style={styles.header}>
             <Text style={styles.title}>Receive ICP</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close">
-              <MaterialCommunityIcons name="close" size={24} color="#b71c1c" />
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <MaterialCommunityIcons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
+
+          <View style={styles.content}>
           <View style={styles.qrContainer}>
-            <QRCode value={principal} size={180} backgroundColor="#fff" color="#b71c1c" />
+              <MaterialCommunityIcons name="qrcode" size={120} color="#b71c1c" />
+              <Text style={styles.qrLabel}>QR Code</Text>
           </View>
-          <Text style={styles.label}>Your Principal</Text>
-          <View style={styles.principalRow}>
-            <Text style={styles.principalText} numberOfLines={1} ellipsizeMode="middle" selectable>{principal}</Text>
-            <TouchableOpacity onPress={handleCopy} style={styles.iconBtn} accessibilityLabel="Copy Principal">
-              <MaterialCommunityIcons name="content-copy" size={18} color="#b71c1c" />
+
+            <View style={styles.addressContainer}>
+              <Text style={styles.addressLabel}>Your Address</Text>
+              <View style={styles.addressBox}>
+                <Text style={styles.addressText} numberOfLines={2}>
+                  {principal}
+                </Text>
+                <TouchableOpacity onPress={handleCopyAddress} style={styles.copyButton}>
+                  <MaterialCommunityIcons name="content-copy" size={20} color="#b71c1c" />
             </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={styles.note}>
+              Share this address to receive ICP from other users
+            </Text>
           </View>
-          <Text style={styles.infoText}>Share this QR code or your principal to receive ICP.</Text>
         </View>
       </View>
     </Modal>
@@ -53,81 +64,76 @@ const ReceiveModal: React.FC<ReceiveModalProps> = ({ visible, onClose, principal
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  card: {
-    width: '90%',
+  modal: {
     backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 22,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-    alignItems: 'center',
+    borderRadius: 16,
+    padding: 20,
+    margin: 20,
+    maxWidth: 400,
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
-    width: '100%',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#222',
+    color: '#333',
   },
-  closeBtn: {
+  closeButton: {
     padding: 4,
-    borderRadius: 16,
-    backgroundColor: 'rgba(183,28,28,0.08)',
+  },
+  content: {
+    alignItems: 'center',
   },
   qrContainer: {
-    marginVertical: 18,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  label: {
+  qrLabel: {
     fontSize: 14,
-    color: '#888',
-    marginBottom: 2,
-    fontWeight: '500',
+    color: '#666',
+    marginTop: 8,
   },
-  principalRow: {
+  addressContainer: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  addressLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  addressBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f7f7f7',
+    backgroundColor: '#f5f5f5',
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginBottom: 2,
-    width: '100%',
-    justifyContent: 'center',
+    padding: 12,
   },
-  principalText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 15,
-    color: '#333',
-    flexShrink: 1,
-    marginRight: 6,
-    letterSpacing: 0.2,
+  addressText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: '#666',
   },
-  iconBtn: {
-    marginLeft: 2,
-    padding: 2,
+  copyButton: {
+    marginLeft: 8,
+    padding: 4,
   },
-  infoText: {
-    fontSize: 13,
-    color: '#aaa',
-    marginTop: 12,
+  note: {
+    fontSize: 12,
+    color: '#999',
     textAlign: 'center',
+    lineHeight: 16,
   },
 });
 

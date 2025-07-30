@@ -1,0 +1,55 @@
+def autoModules = new ArrayList()
+def reactNativeModules = new ArrayList()
+
+def reactNativeDir = new File("$rootDir/../node_modules/react-native")
+def reactNativeCliDir = new File("$rootDir/../node_modules/@react-native-community/cli")
+def reactNativeCliPlatformAndroidDir = new File("$rootDir/../node_modules/@react-native-community/cli-platform-android")
+
+def reactNativeModulesPaths = [
+    reactNativeDir,
+    reactNativeCliDir,
+    reactNativeCliPlatformAndroidDir
+]
+
+reactNativeModulesPaths.each { reactNativeModulesPath ->
+    if (reactNativeModulesPath.exists()) {
+        reactNativeModules.add(reactNativeModulesPath)
+    }
+}
+
+def nodeModules = new File("$rootDir/../node_modules")
+if (nodeModules.exists()) {
+    nodeModules.eachDir { dir ->
+        def packageJson = new File(dir, "package.json")
+        if (packageJson.exists()) {
+            def packageJsonText = packageJson.text
+            if (packageJsonText.contains('"name": "@react-native-async-storage/async-storage"')) {
+                def androidDir = new File(dir, "android")
+                if (androidDir.exists()) {
+                    autoModules.add(dir)
+                }
+            }
+        }
+    }
+}
+
+def applyNativeModulesSettingsGradle(settings) {
+    autoModules.each { module ->
+        def moduleName = module.name
+        def modulePath = module.absolutePath
+        settings.include(":$moduleName")
+        settings.project(":$moduleName").projectDir = new File(modulePath)
+    }
+}
+
+def applyNativeModulesAppBuildGradle(project) {
+    autoModules.each { module ->
+        def moduleName = module.name
+        project.dependencies {
+            implementation project(":$moduleName")
+        }
+    }
+}
+
+ext.applyNativeModulesSettingsGradle = this.&applyNativeModulesSettingsGradle
+ext.applyNativeModulesAppBuildGradle = this.&applyNativeModulesAppBuildGradle 

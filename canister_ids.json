@@ -1,0 +1,10 @@
+{
+  "icp_app_store": {
+    "ic": "your_mainnet_canister_id_here",
+    "local": "rrkah-fqaaa-aaaaa-aaaaq-cai"
+  },
+  "icp_app_frontend": {
+    "ic": "your_frontend_canister_id_here",
+    "local": "ryjl3-tyaaa-aaaaa-aaaba-cai"
+  }
+} 

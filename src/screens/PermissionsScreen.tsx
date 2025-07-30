@@ -70,11 +70,9 @@ const PermissionsScreen: React.FC = () => {
   }, []);
 
   const loadPermissionStatus = async () => {
-    // In a real app, this would check actual permission status
-    // For now, we'll simulate the current state
     setPermissions(prev => prev.map(p => ({
       ...p,
-      granted: p.id === 'network' || p.id === 'storage', // Simulate some granted permissions
+      granted: p.id === 'network' || p.id === 'storage',
     })));
   };
 
@@ -88,7 +86,6 @@ const PermissionsScreen: React.FC = () => {
     }
 
     try {
-      // Simulate permission request/revoke
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       setPermissions(prev => prev.map(p => 

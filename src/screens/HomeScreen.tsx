@@ -1,305 +1,518 @@
-import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
-import { Card, Button, useTheme, IconButton } from 'react-native-paper';
-import { useState } from 'react';
 
-const MOCK_FAVORITES = Array(6).fill(null);
-const MOCK_DAPPS = Array(8).fill(null).map((_, idx) => ({ id: idx, url: 'www.baidu.com', name: `DApp${idx + 1}` }));
+interface HomeScreenProps {
+  onNavigateToTransfer?: () => void;
+  onNavigateToHistory?: () => void;
+  onNavigateToAppStore?: () => void;
+}
 
-const HomeScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
-  const { user, refreshBalance } = useUser();
-  const theme = useTheme();
-  const [showBalance, setShowBalance] = useState(true);
+const HomeScreen: React.FC<HomeScreenProps> = ({ 
+  onNavigateToTransfer, 
+  onNavigateToHistory,
+  onNavigateToAppStore
+}) => {
+  const { user, refreshBalance, mockTransactions } = useUser();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Calculate dynamic ICP data based on user balance
-  const getICPDynamicData = () => {
-    if (!user.loggedIn || user.balance === 0) {
-      return {
-        change: '+0.00%',
-        details: [
-          { id: 1, value: '+0.00', amount: '0.0000' },
-          { id: 2, value: '+0.00', amount: '0.0000' },
-          { id: 3, value: '+0.00', amount: '0.0000' },
-        ],
-      };
-    }
-
-    // Generate realistic-looking data based on current balance
-    const baseBalance = user.balance;
-    const changePercent = ((Math.random() * 2 - 1) * 0.5).toFixed(2); // Random change between -0.5% and +0.5%
-    const isPositive = Math.random() > 0.5;
-    const change = isPositive ? `+${changePercent}%` : `${changePercent}%`;
-
-    // Generate transaction-like details
-    const details = [
-      {
-        id: 1,
-        value: isPositive ? `+${(Math.random() * 0.5).toFixed(2)}` : `-${(Math.random() * 0.5).toFixed(2)}`,
-        amount: (baseBalance * (1 + Math.random() * 0.1)).toFixed(4),
-      },
-      {
-        id: 2,
-        value: isPositive ? `+${(Math.random() * 0.3).toFixed(2)}` : `-${(Math.random() * 0.3).toFixed(2)}`,
-        amount: (baseBalance * (0.1 + Math.random() * 0.05)).toFixed(4),
-      },
-      {
-        id: 3,
-        value: isPositive ? `+${(Math.random() * 0.4).toFixed(2)}` : `-${(Math.random() * 0.4).toFixed(2)}`,
-        amount: (baseBalance * (0.8 + Math.random() * 0.2)).toFixed(4),
-      },
-    ];
-
-    return { change, details };
-  };
-
-  const icpData = getICPDynamicData();
-  
-  const goToDappWebView = (url: string) => {
-    if (
-      navigation &&
-      navigation.getState &&
-      navigation.getState().routeNames &&
-      navigation.getState().routeNames.includes('DappWebView')
-    ) {
-      navigation.navigate('DappWebView', { url });
-    } else {
-      if (navigation && navigation.navigate) {
-        navigation.navigate('Home', { screen: 'DappWebView', params: { url } });
-      }
-    }
-  };
-
-  const handleVerifyAccount = () => {
-    if (!user.loggedIn) {
-      // Navigate to Internet Identity Login
-      if (navigation && navigation.navigate) {
-        navigation.navigate('InternetIdentityLogin');
-      }
-    } else {
-      // User is already verified, show info
-      Alert.alert(
-        'Account Verified',
-        'Your account has been verified by Internet Identity.',
-        [{ text: 'OK' }]
-      );
-    }
-  };
-
-  const handleRefreshBalance = async () => {
+  const handleRefreshBalance = useCallback(async () => {
+    setIsRefreshing(true);
     try {
       await refreshBalance();
-    } catch (error) {
-      console.error('Error refreshing balance:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshBalance]);
+
+  const formatBalance = (balance: number) => {
+    return balance.toFixed(8);
+  };
+
+  const formatUSDValue = (balance: number, price: number) => {
+    return (balance * price).toFixed(2);
+  };
+
+  const formatAddress = (address: string) => {
+    if (address.length > 20) {
+      return `${address.substring(0, 10)}...${address.substring(address.length - 10)}`;
+    }
+    return address;
+  };
+
+  const formatTimeAgo = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+    if (diffInHours < 1) {
+      return 'Just now';
+    } else if (diffInHours < 24) {
+      return `${Math.floor(diffInHours)}h ago`;
+    } else if (diffInHours < 168) {
+      return `${Math.floor(diffInHours / 24)}d ago`;
+    } else {
+      return date.toLocaleDateString();
     }
   };
 
-  // Welcome message
-  const displayName = user.nickname || (user.principal ? user.principal.substring(0, 8) + '...' : 'User');
+  const getBalanceSourceColor = (source: string) => {
+    switch (source) {
+      case 'mainnet':
+        return '#4caf50';
+      case 'mock':
+        return '#ff9800';
+      case 'error':
+        return '#f44336';
+      default:
+        return '#999';
+    }
+  };
+
+  const getBalanceSourceText = (source: string) => {
+    switch (source) {
+      case 'mainnet':
+        return 'Mainnet';
+      case 'mock':
+        return 'Mock Data';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Unknown';
+      }
+  };
+
+  const quickActions = useMemo(() => [
+    {
+      id: 'transfer',
+      title: 'Send ICP',
+      subtitle: 'Transfer to another address',
+      icon: 'send',
+      color: '#b71c1c',
+      onPress: onNavigateToTransfer,
+      },
+      {
+      id: 'receive',
+      title: 'Receive ICP',
+      subtitle: 'Get your address',
+      icon: 'download',
+      color: '#4caf50',
+      onPress: () => {
+        console.log('Receive ICP');
+      },
+    },
+    {
+      id: 'history',
+      title: 'Transaction History',
+      subtitle: 'View recent transactions',
+      icon: 'history',
+      color: '#2196f3',
+      onPress: onNavigateToHistory,
+    },
+    {
+      id: 'appstore',
+      title: 'App Store',
+      subtitle: 'Discover dApps',
+      icon: 'store',
+      color: '#ff9800',
+      onPress: onNavigateToAppStore,
+    },
+  ], [onNavigateToTransfer, onNavigateToHistory, onNavigateToAppStore]);
+
+  const recentActivity = useMemo(() => {
+    return mockTransactions
+      .slice(0, 3)
+      .map(tx => ({
+        id: tx.txId,
+        type: tx.type,
+        amount: tx.amount,
+        from: tx.from,
+        to: tx.to,
+        time: formatTimeAgo(tx.date),
+        status: tx.status,
+        fee: tx.fee,
+      }));
+  }, [mockTransactions]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
-      <View style={{ marginTop: 24, marginBottom: 18, alignItems: 'center' }}>
-        <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.colors.primary, textAlign: 'center' }}>
-          👋 Welcome, {displayName}!
-        </Text>
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <Text style={styles.welcomeText}>Welcome back!</Text>
+          <Text style={styles.userName}>{user.nickname || 'User'}</Text>
+        </View>
+        <TouchableOpacity style={styles.refreshButton} onPress={handleRefreshBalance}>
+          <MaterialCommunityIcons
+            name={isRefreshing ? "loading" : "refresh"}
+            size={24}
+            color="white"
+          />
+        </TouchableOpacity>
       </View>
-      {/* Wallet Balance Card */}
-      <Card style={{ marginBottom: 28, backgroundColor: theme.colors.surface, borderRadius: 22, elevation: 5, shadowColor: theme.colors.primary, shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, paddingBottom: 8 }}>
-        <Card.Content>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <MaterialCommunityIcons name="wallet" color={theme.colors.primary} size={28} />
-            <Text style={{ fontSize: 20, fontWeight: '600', marginLeft: 10, color: theme.colors.primary }}>Wallet Balance</Text>
-            <IconButton
-              icon="eye"
-              size={22}
-              style={{ marginLeft: 'auto', marginRight: 0, marginTop: -8 }}
-              onPress={() => setShowBalance(v => !v)}
-              accessibilityLabel={showBalance ? 'Hide balance' : 'Show balance'}
-              rippleColor={theme.colors.primary + '22'}
-            />
-            <IconButton
-              icon="refresh"
-              size={22}
-              style={{ marginTop: -8 }}
-              onPress={handleRefreshBalance}
-              accessibilityLabel="Refresh balance"
-              rippleColor={theme.colors.primary + '22'}
-            />
+
+      {/* Balance Card */}
+      <View style={styles.balanceCard}>
+        <View style={styles.balanceHeader}>
+          <Text style={styles.balanceTitle}>Total Balance</Text>
+          <View style={styles.balanceSource}>
+            <View style={[
+              styles.sourceIndicator,
+              { backgroundColor: getBalanceSourceColor(user.balanceSource || 'unknown') }
+            ]} />
+            <Text style={styles.sourceText}>
+              {getBalanceSourceText(user.balanceSource || 'unknown')}
+            </Text>
           </View>
-          <Text style={{ fontSize: 36, fontWeight: 'bold', color: theme.colors.onSurface, letterSpacing: 1, marginTop: 2, marginBottom: 6 }}>
-            {showBalance ? (user.loggedIn ? `${user.balance.toFixed(4)} ICP` : '0.0000 ICP') : '••••••••'}
+        </View>
+        
+        <Text style={styles.balanceAmount}>
+          {formatBalance(user.balance)} ICP
+        </Text>
+        
+        {user.balance > 0 && (
+          <Text style={styles.balanceUSD}>
+            ≈ ${formatUSDValue(user.balance, 12.50)} USD
           </Text>
-        </Card.Content>
-      </Card>
-      {/* Shortcuts Row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 }}>
-        {[{
-          icon: 'apps',
-          label: 'App Store',
-          desc: 'Explore dapps',
-          onPress: () => navigation.navigate('Market')
-        }, {
-          icon: 'account',
-          label: 'Profile',
-          desc: 'Manage your profile',
-          onPress: () => navigation.navigate('Mine')
-        }].map((item, idx) => (
-          <Card
-            key={item.label}
-            style={{ flex: 1, marginRight: idx === 0 ? 10 : 0, marginLeft: idx === 1 ? 10 : 0, borderRadius: 16, elevation: 3, shadowColor: theme.colors.primary, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}
-            onPress={item.onPress}
-          >
-            <Card.Content style={{ alignItems: 'center', paddingVertical: 22 }}>
-              <MaterialCommunityIcons name={item.icon as any} size={32} color={theme.colors.primary} />
-              <Text style={{ marginTop: 10, fontWeight: '600', color: theme.colors.primary, fontSize: 16 }}>{item.label}</Text>
-              <Text style={{ marginTop: 4, color: theme.colors.onSurface, fontSize: 12, opacity: 0.7 }}>{item.desc}</Text>
-            </Card.Content>
-          </Card>
-        ))}
+        )}
+
+        {user.lastBalanceUpdate && (
+          <Text style={styles.lastUpdate}>
+            Last updated: {new Date(user.lastBalanceUpdate).toLocaleString()}
+          </Text>
+        )}
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActionsContainer}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.quickActionsGrid}>
+          {quickActions.map((action) => (
+            <TouchableOpacity
+              key={action.id}
+              style={styles.quickActionCard}
+              onPress={action.onPress}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: `${action.color}15` }]}>
+                <MaterialCommunityIcons
+                  name={action.icon as any}
+                  size={24}
+                  color={action.color}
+                />
+              </View>
+              <Text style={styles.actionTitle}>{action.title}</Text>
+              <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Recent Activity */}
+      <View style={styles.recentActivityContainer}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <TouchableOpacity onPress={onNavigateToHistory}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {recentActivity.length > 0 ? (
+          recentActivity.map((activity) => (
+            <View key={activity.id} style={styles.activityItem}>
+              <View style={[
+                styles.activityIcon,
+                { backgroundColor: activity.type === 'send' ? '#ffebee' : '#e8f5e8' }
+              ]}>
+                <MaterialCommunityIcons
+                  name={activity.type === 'send' ? 'arrow-up' : 'arrow-down'}
+                  size={16}
+                  color={activity.type === 'send' ? '#b71c1c' : '#4caf50'}
+                />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityType}>
+                  {activity.type === 'send' ? 'Sent' : 'Received'}
+                </Text>
+                <Text style={[
+                  styles.activityAmount,
+                  { color: activity.type === 'send' ? '#b71c1c' : '#4caf50' }
+                ]}>
+                  {activity.type === 'send' ? '-' : '+'}{activity.amount.toFixed(8)} ICP
+                </Text>
+                <Text style={styles.activityAddress}>
+                  {activity.type === 'send' 
+                    ? `To: ${formatAddress(activity.to || 'unknown')}`
+                    : `From: ${formatAddress(activity.from || 'unknown')}`
+                  }
+                </Text>
+              </View>
+              <View style={styles.activityMeta}>
+                <Text style={styles.activityTime}>{activity.time}</Text>
+                <View style={styles.statusContainer}>
+                  <MaterialCommunityIcons
+                    name={activity.status === 'success' ? 'check-circle' : 
+                          activity.status === 'pending' ? 'clock' : 'close-circle'}
+                    size={12}
+                    color={activity.status === 'success' ? '#4caf50' : 
+                           activity.status === 'pending' ? '#ff9800' : '#f44336'}
+                  />
+                </View>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyActivity}>
+            <MaterialCommunityIcons name="history" size={32} color="#ccc" />
+            <Text style={styles.emptyActivityText}>No recent activity</Text>
+            <Text style={styles.emptyActivitySubtext}>Your transactions will appear here</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Network Status */}
+      <View style={styles.networkStatusContainer}>
+        <View style={styles.networkStatus}>
+          <MaterialCommunityIcons name="wifi" size={16} color="#4caf50" />
+          <Text style={styles.networkStatusText}>Connected to ICP Mainnet</Text>
+        </View>
       </View>
     </ScrollView>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = {
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 24,
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  verifyBox: {
     backgroundColor: '#f5f5f5',
-    borderRadius: 12,
+  },
+  header: {
     padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: '#b71c1c',
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
   },
-  verifiedBox: {
-    backgroundColor: '#f0f8f0',
-    borderColor: '#4CAF50',
+  headerContent: {
+    flex: 1,
   },
-  verifyContent: {
-    alignItems: 'center',
+  welcomeText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
   },
-  verifyText: {
+  userName: {
+    fontSize: 20,
+    fontWeight: 'bold' as const,
+    color: 'white',
+    marginTop: 2,
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  balanceCard: {
+    margin: 20,
+    padding: 20,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  balanceHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 12,
+  },
+  balanceTitle: {
     fontSize: 16,
+    fontWeight: '600' as const,
     color: '#333',
-    marginTop: 8,
-    fontWeight: '500',
   },
-  verifySubtext: {
+  balanceSource: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  sourceIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  sourceText: {
     fontSize: 12,
+    color: '#666',
+  },
+  balanceAmount: {
+    fontSize: 32,
+    fontWeight: 'bold' as const,
+    color: '#b71c1c',
+    marginBottom: 4,
+  },
+  balanceUSD: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
+  },
+  lastUpdate: {
+    fontSize: 10,
+    color: '#999',
+  },
+  quickActionsContainer: {
+    margin: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold' as const,
+    color: '#333',
+    marginBottom: 16,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    justifyContent: 'space-between' as const,
+  },
+  quickActionCard: {
+    width: '48%',
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 12,
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#333',
+    marginBottom: 4,
+  },
+  actionSubtitle: {
+    fontSize: 12,
+    color: '#666',
+  },
+  recentActivityContainer: {
+    margin: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 16,
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: '#b71c1c',
+    fontWeight: '600' as const,
+  },
+  activityItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  activityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: 12,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityType: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#333',
+  },
+  activityAmount: {
+    fontSize: 16,
+    fontWeight: 'bold' as const,
+    color: '#b71c1c',
+    marginTop: 2,
+  },
+  activityAddress: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  activityMeta: {
+    alignItems: 'flex-end' as const,
+  },
+  activityTime: {
+    fontSize: 10,
+    color: '#999',
+    marginBottom: 4,
+  },
+  statusContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  emptyActivity: {
+    alignItems: 'center' as const,
+    paddingVertical: 40,
+    backgroundColor: 'white',
+    borderRadius: 12,
+  },
+  emptyActivityText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#333',
+    marginTop: 12,
+  },
+  emptyActivitySubtext: {
+    fontSize: 14,
     color: '#666',
     marginTop: 4,
   },
-  verifiedText: {
-    fontSize: 16,
-    color: '#4CAF50',
-    marginTop: 8,
-    fontWeight: '500',
+  networkStatusContainer: {
+    margin: 20,
   },
-  principalText: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
-  },
-  icpCardRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  icpCard: {
-    flex: 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginRight: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  icpChange: {
-    fontSize: 14,
-    color: '#b71c1c',
-    marginLeft: 4,
-  },
-  icpValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#222',
-  },
-  icpDetails: {
-    flex: 1,
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+  networkStatus: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: 'white',
     padding: 12,
-    elevation: 2,
+    borderRadius: 8,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  icpDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  icpDetailText: {
-    fontSize: 13,
-    color: '#333',
-    marginLeft: 4,
-  },
-  icpDetailAmount: {
-    fontSize: 13,
-    color: '#888',
+  networkStatusText: {
+    fontSize: 12,
+    color: '#666',
     marginLeft: 8,
   },
-  section: {
-    marginTop: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#222',
-    marginBottom: 4,
-  },
-  favoriteBox: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  dappBox: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    marginRight: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  dappLabel: {
-    fontSize: 12,
-    color: '#b71c1c',
-    marginTop: 4,
-  },
-});
+};
 
 export default HomeScreen; 

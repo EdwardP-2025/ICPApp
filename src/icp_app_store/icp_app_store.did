@@ -1,0 +1,84 @@
+type AppId = text;
+type UserId = principal;
+type AppType = variant {
+  pwa;
+  native;
+  canister;
+  web;
+};
+
+type App = record {
+  id : AppId;
+  name : text;
+  description : text;
+  category : text;
+  icon : text;
+  rating : float64;
+  downloads : text;
+  url : text;
+  featured : bool;
+  tags : vec text;
+  version : text;
+  size : text;
+  developer : text;
+  installType : AppType;
+  webUrl : opt text;
+  canisterId : opt text;
+  appStoreId : opt text;
+  pwaManifestUrl : opt text;
+};
+
+type InstalledApp = record {
+  id : AppId;
+  name : text;
+  url : text;
+  icon : text;
+  installDate : int;
+  lastUsed : opt int;
+  launchCount : nat;
+  installType : AppType;
+  canisterId : opt text;
+  appStoreId : opt text;
+  isFullyInstalled : bool;
+};
+
+type UserProfile = record {
+  userId : UserId;
+  nickname : opt text;
+  installedApps : vec AppId;
+  totalLaunches : nat;
+  lastActive : int;
+};
+
+type AppStats = record {
+  totalApps : nat;
+  totalUsers : nat;
+  totalInstallations : nat;
+};
+
+service : {
+  // Initialization
+  initialize : () -> (bool);
+  
+  // App queries
+  getAllApps : () -> (vec App) query;
+  getFeaturedApps : () -> (vec App) query;
+  getAppsByCategory : (text) -> (vec App) query;
+  searchApps : (text) -> (vec App) query;
+  
+  // App management (no re-deployment needed)
+  addNewApp : (App) -> (variant { ok : bool; err : text });
+  removeApp : (AppId) -> (variant { ok : bool; err : text });
+  updateApp : (AppId, App) -> (variant { ok : bool; err : text });
+  
+  // User management
+  installApp : (AppId) -> (variant { ok : InstalledApp; err : text });
+  uninstallApp : (AppId) -> (variant { ok : bool; err : text });
+  launchApp : (AppId) -> (variant { ok : App; err : text });
+  getUserInstalledApps : () -> (vec InstalledApp) query;
+  getUserProfile : () -> (opt UserProfile) query;
+  updateUserNickname : (text) -> (variant { ok : UserProfile; err : text });
+  
+  // Statistics
+  getAppStats : () -> (AppStats) query;
+}; 

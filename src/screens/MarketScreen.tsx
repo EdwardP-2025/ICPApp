@@ -1,448 +1,476 @@
-// NOTE: Ensure tsconfig.json includes "resolveJsonModule": true and "lib": ["es2015", ...] for ES2015 features and JSON imports.
 import * as React from 'react';
-import { useState, useMemo, useEffect } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  FlatList, 
-  Image, 
-  TextInput as RNTextInput, 
-  Text, 
-  TouchableOpacity, 
-  ScrollView, 
-  ActivityIndicator, 
-  Platform 
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, StatusBar } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import appsData from '../../assets/apps.json';
-import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { imageMap } from '../assets/imageMap';
-import * as RNFS from 'react-native-fs';
-import DeviceInfo from 'react-native-device-info';
-import IntentLauncher, { IntentConstant } from 'react-native-intent-launcher';
-import { Card, Chip, Button, useTheme, Avatar } from 'react-native-paper';
+import { useUser } from '../contexts/UserContext';
+import { useState } from 'react';
 
-const PLACEHOLDER_IMAGE = require('../../assets/icon.png');
+const MOCK_APPS = [
+  {
+    id: 1,
+    name: 'DSCVR',
+    description: 'Decentralized social media platform',
+    icon: '🌐',
+    category: 'Social',
+    rating: 4.5,
+    downloads: '10K+',
+    price: 'Free',
+    featured: true,
+  },
+  {
+    id: 2,
+    name: 'OpenChat',
+    description: 'Decentralized messaging app',
+    icon: '💬',
+    category: 'Communication',
+    rating: 4.3,
+    downloads: '5K+',
+    price: 'Free',
+    featured: false,
+  },
+  {
+    id: 3,
+    name: 'Plug Wallet',
+    description: 'Cryptocurrency wallet',
+    icon: '💰',
+    category: 'Finance',
+    rating: 4.7,
+    downloads: '15K+',
+    price: 'Free',
+    featured: true,
+  },
+  {
+    id: 4,
+    name: 'Candid',
+    description: 'Programming language for IC',
+    icon: '⚙️',
+    category: 'Development',
+    rating: 4.2,
+    downloads: '2K+',
+    price: 'Free',
+    featured: false,
+  },
+  {
+    id: 5,
+    name: 'Motoko',
+    description: 'IC programming language',
+    icon: '🔧',
+    category: 'Development',
+    rating: 4.1,
+    downloads: '1K+',
+    price: 'Free',
+    featured: false,
+  },
+  {
+    id: 6,
+    name: 'Internet Identity',
+    description: 'Authentication service',
+    icon: '🔐',
+    category: 'Security',
+    rating: 4.8,
+    downloads: '20K+',
+    price: 'Free',
+    featured: true,
+  },
+  {
+    id: 7,
+    name: 'NNS',
+    description: 'Network Nervous System',
+    icon: '🏛️',
+    category: 'Governance',
+    rating: 4.6,
+    downloads: '8K+',
+    price: 'Free',
+    featured: false,
+  },
+  {
+    id: 8,
+    name: 'Sonic',
+    description: 'DeFi platform',
+    icon: '📈',
+    category: 'Finance',
+    rating: 4.4,
+    downloads: '12K+',
+    price: 'Free',
+    featured: false,
+  },
+];
 
-// Fix implicit any types
-const getAllTags = (apps: Array<{ tags: string[] }>): string[] => {
-  const tagSet = new Set<string>();
-  apps.forEach((app: { tags: string[] }) => app.tags.forEach((tag: string) => tagSet.add(tag)));
-  return Array.from(tagSet);
-};
-
-const INSTALLED_APPS_KEY = 'installedMiniApps';
+const CATEGORIES = ['All', 'Social', 'Finance', 'Communication', 'Development', 'Gaming', 'Security', 'Governance'];
 
 const MarketScreen: React.FC = () => {
-  const [search, setSearch] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  // Track image errors by app name
-  const [imageErrors, setImageErrors] = useState<{ [name: string]: boolean }>({});
-  const navigation = useNavigation<any>();
-  const [installedApps, setInstalledApps] = useState<string[]>([]);
-  const isFocused = useIsFocused();
-  const [installing, setInstalling] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{ [name: string]: number }>({});
-  const [realInstalled, setRealInstalled] = useState<{ [name: string]: boolean }>({});
-  const theme = useTheme();
+  const { user } = useUser();
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Refresh installed apps on focus or when returning from detail
-  useEffect(() => {
-    const fetchInstalled = async () => {
-      const data = await AsyncStorage.getItem(INSTALLED_APPS_KEY);
-      setInstalledApps(data ? JSON.parse(data) : []);
-    };
-    if (isFocused) fetchInstalled();
-  }, [isFocused]);
+  const filteredApps = MOCK_APPS.filter(app => {
+    const matchesCategory = selectedCategory === 'All' || app.category === selectedCategory;
+    const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         app.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
-  // Check real installed status for all apps (Android only)
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      (async () => {
-        const pkgs = await (DeviceInfo as any).getInstalledPackages?.() || [];
-        const status: { [name: string]: boolean } = {};
-        appsData.forEach(app => {
-          if (app.packageName) status[app.name] = pkgs.includes(app.packageName);
-        });
-        setRealInstalled(status);
-      })();
-    }
-  }, [isFocused]);
+  const featuredApps = MOCK_APPS.filter(app => app.featured);
 
-  // Filter apps by search and selected tag
-  const filteredApps = useMemo(() => {
-    let filtered = appsData;
-    if (search) {
-      const lower = search.toLowerCase();
-      filtered = filtered.filter(app =>
-        app.name.toLowerCase().includes(lower) ||
-        app.tags.some((tag: string) => tag.toLowerCase().includes(lower))
-      );
-    }
-    if (selectedTag) {
-      filtered = filtered.filter(app => Array.isArray(app.tags) && app.tags.some((tag: string) => tag === selectedTag));
-    }
-    return filtered;
-  }, [search, selectedTag]);
-
-  const allTags = useMemo(() => getAllTags(appsData), []);
-
-  const handleImageError = (name: string) => {
-    setImageErrors(prev => ({ ...prev, [name]: true }));
-  };
-
-  const handleInstall = async (app: any): Promise<void> => {
-    if (Platform.OS !== 'android') return;
-    if (!app.apkUrl) return;
-    setInstalling(app.name);
-    setDownloadProgress(p => ({ ...p, [app.name]: 0 }));
-    try {
-      const apkFilename = app.apkUrl.split('/').pop();
-      const localUri = RNFS.CachesDirectoryPath + '/' + apkFilename;
-      const downloadResult = RNFS.downloadFile({
-        fromUrl: app.apkUrl,
-        toFile: localUri,
-        progress: (res) => {
-          setDownloadProgress(p => ({ ...p, [app.name]: res.bytesWritten / res.contentLength }));
-        },
-        progressDivider: 10,
-      });
-      const result = await downloadResult.promise;
-      if (result.statusCode !== 200) throw new Error('Download failed');
-      IntentLauncher.startActivity({
-        action: 'android.intent.action.VIEW',
-        data: 'file://' + localUri,
-        type: 'application/vnd.android.package-archive',
-        flags: 1,
-      });
-    } catch (e) {
-      // Optionally show error
-    }
-    setInstalling(null);
-    setTimeout(() => {
-      // Re-check installed status
-      (async () => {
-        const pkgs = await (DeviceInfo as any).getInstalledPackages?.() || [];
-        setRealInstalled(s => ({ ...s, [app.name]: pkgs.includes(app.packageName) }));
-      })();
-    }, 3000);
-  };
-
-  const handleOpen = (app: any): void => {
-    if (Platform.OS !== 'android') return;
-    if (!app.packageName) return;
-    try {
-      IntentLauncher.startApp({ packageName: app.packageName });
-    } catch (e) {}
-  };
-
-  const handleUninstall = (app: any): void => {
-    if (Platform.OS !== 'android') return;
-    if (!app.packageName) return;
-    try {
-      IntentLauncher.startActivity({
-        action: IntentConstant.ACTION_DELETE,
-        data: `package:${app.packageName}`,
-      });
-      setTimeout(() => {
-        (async () => {
-          const pkgs = await (DeviceInfo as any).getInstalledPackages?.() || [];
-          setRealInstalled(s => ({ ...s, [app.name]: pkgs.includes(app.packageName) }));
-        })();
-      }, 3000);
-    } catch (e) {}
-  };
-
-  const renderAppCard = ({ item }: { item: any }): React.JSX.Element => {
-    // App icon logic
-    let iconSource;
-    if (item.icon && imageMap[item.icon]) {
-      iconSource = imageMap[item.icon];
-    } else if (item.icon && item.icon.startsWith('http')) {
-      iconSource = { uri: item.icon };
-    } else if (item.screenshots && imageMap[item.screenshots[0]]) {
-      iconSource = imageMap[item.screenshots[0]];
-    } else if (item.screenshots && item.screenshots[0]) {
-      iconSource = { uri: item.screenshots[0] };
-    } else {
-      iconSource = PLACEHOLDER_IMAGE;
-    }
-    const isInstalled = Array.isArray(installedApps)
-      ? installedApps.indexOf(item.name) !== -1
-      : false;
-    return (
-      <Card
-        style={{ marginBottom: 18, borderRadius: 18, elevation: 2, backgroundColor: theme.colors.surface }}
-        onPress={() => navigation.navigate('AppDetail', { app: item })}
-        accessibilityLabel={`Mini app card for ${item.name}`}
-      >
-        <Card.Content style={{ flexDirection: 'row', alignItems: 'flex-start', paddingBottom: 12 }}>
-          <Avatar.Image
-            source={iconSource}
-            size={64}
-            style={{ marginRight: 18, backgroundColor: theme.colors.background }}
-          />
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-              <Text style={{ fontWeight: 'bold', fontSize: 18, color: theme.colors.onSurface }}>{item.name}</Text>
-              {realInstalled[item.name] && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.secondary + '22', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 }}>
-                  <MaterialCommunityIcons name="check-circle" size={16} color={theme.colors.secondary} />
-                  <Text style={{ color: theme.colors.secondary, fontSize: 12, marginLeft: 2, fontWeight: '600' }}>Installed</Text>
-                </View>
-              )}
-            </View>
-            <Text style={{ fontSize: 14, color: theme.colors.onSurface + 'BB', marginBottom: 6 }}>{item.description}</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
-              {item.tags.map((tag: string) => (
-                <Chip
-                  key={tag}
-                  mode={selectedTag === tag ? 'flat' : 'outlined'}
-                  selected={selectedTag === tag}
-                  style={{
-                    marginRight: 6,
-                    marginBottom: 4,
-                    backgroundColor: selectedTag === tag ? theme.colors.primary : theme.colors.background,
-                    borderColor: theme.colors.primary,
-                    borderWidth: selectedTag === tag ? 0 : 1,
-                    height: 28,
-                  }}
-                  textStyle={{ color: selectedTag === tag ? theme.colors.onPrimary : theme.colors.primary, fontSize: 13, fontWeight: '500' }}
-                  onPress={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                  accessibilityLabel={`Filter by tag: ${tag}`}
-                >
-                  #{tag}
-                </Chip>
-              ))}
-            </View>
-            {Platform.OS === 'android' && (
-              <View style={{ flexDirection: 'row', marginTop: 4, gap: 8 }}>
-                {realInstalled[item.name] ? (
-                  <>
-                    <Button
-                      mode="contained-tonal"
-                      icon="open-in-new"
-                      style={{ borderRadius: 8, marginRight: 8 }}
-                      labelStyle={{ color: theme.colors.secondary, fontWeight: '600' }}
-                      onPress={() => handleOpen(item)}
-                    >
-                      Open
-                    </Button>
-                    <Button
-                      mode="outlined"
-                      icon="delete"
-                      style={{ borderRadius: 8, borderColor: theme.colors.error, borderWidth: 1 }}
-                      labelStyle={{ color: theme.colors.error, fontWeight: '600' }}
-                      onPress={() => handleUninstall(item)}
-                    >
-                      Uninstall
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    mode="contained"
-                    icon={installing === item.name ? undefined : 'download'}
-                    style={{ borderRadius: 8, backgroundColor: theme.colors.primary, minWidth: 90 }}
-                    labelStyle={{ color: theme.colors.onPrimary, fontWeight: '600' }}
-                    onPress={() => handleInstall(item)}
-                    disabled={installing === item.name}
-                    loading={installing === item.name}
-                  >
-                    {installing === item.name ? `${Math.round((downloadProgress[item.name] || 0) * 100)}%` : 'Install'}
-                  </Button>
-                )}
-              </View>
-            )}
-          </View>
-        </Card.Content>
-      </Card>
+  const handleAppPress = (app: any) => {
+    Alert.alert(
+      'App Details',
+      `${app.name}\n\n${app.description}\n\nCategory: ${app.category}\nRating: ${app.rating}/5\nDownloads: ${app.downloads}\nPrice: ${app.price}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Install', onPress: () => Alert.alert('Success', `${app.name} installation started!`) }
+      ]
     );
   };
 
+  const renderCategoryChip = (category: string) => (
+    <TouchableOpacity
+      key={category}
+      style={[
+        styles.categoryChip,
+        selectedCategory === category && styles.selectedCategoryChip
+      ]}
+      onPress={() => setSelectedCategory(category)}
+    >
+      <Text style={[
+        styles.categoryChipText,
+        selectedCategory === category && styles.selectedCategoryChipText
+      ]}>
+        {category}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderFeaturedApp = (app: any) => (
+    <TouchableOpacity
+      key={app.id}
+      style={styles.featuredAppCard}
+      onPress={() => handleAppPress(app)}
+    >
+      <View style={styles.featuredAppHeader}>
+        <Text style={styles.featuredAppIcon}>{app.icon}</Text>
+        <View style={styles.featuredAppBadge}>
+          <Text style={styles.featuredAppBadgeText}>Featured</Text>
+        </View>
+      </View>
+      <Text style={styles.featuredAppName}>{app.name}</Text>
+      <Text style={styles.featuredAppDescription}>{app.description}</Text>
+      <View style={styles.featuredAppFooter}>
+        <View style={styles.ratingContainer}>
+          <MaterialCommunityIcons name="star" size={14} color="#FFD700" />
+          <Text style={styles.ratingText}>{app.rating}</Text>
+        </View>
+        <Text style={styles.downloadsText}>{app.downloads}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderAppCard = (app: any) => (
+    <TouchableOpacity
+      key={app.id}
+      style={styles.appCard}
+      onPress={() => handleAppPress(app)}
+    >
+      <View style={styles.appCardHeader}>
+        <Text style={styles.appIcon}>{app.icon}</Text>
+        <View style={styles.appInfo}>
+          <Text style={styles.appName}>{app.name}</Text>
+          <Text style={styles.appCategory}>{app.category}</Text>
+        </View>
+        <View style={styles.appRating}>
+          <MaterialCommunityIcons name="star" size={14} color="#FFD700" />
+          <Text style={styles.ratingText}>{app.rating}</Text>
+        </View>
+      </View>
+      <Text style={styles.appDescription}>{app.description}</Text>
+      <View style={styles.appCardFooter}>
+        <Text style={styles.downloadsText}>{app.downloads}</Text>
+        <Text style={styles.priceText}>{app.price}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}> 
-      <Text style={[styles.header, { color: theme.colors.onSurface }]}>Market</Text>
-      <View style={[styles.searchBar, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}> 
-        <MaterialCommunityIcons name="magnify" size={20} color={theme.colors.primary} />
-        <RNTextInput
-          style={[styles.searchInput, { color: theme.colors.onSurface }]}
-          placeholder="Search mini apps by name or tag..."
-          value={search}
-          onChangeText={setSearch}
-          placeholderTextColor={theme.colors.onSurface + '77'}
-          accessibilityLabel="Search mini apps"
-        />
-      </View>
-      {/* Tag filter row */}
-      <View style={{ marginTop: 14, marginBottom: 10 }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: 8,
-            alignItems: 'center',
-            minHeight: 40,
-          }}
-          style={{ flexGrow: 0 }}
-        >
-          {allTags.map(tag => (
-            <Chip
-              key={tag}
-              mode={selectedTag === tag ? 'flat' : 'outlined'}
-              selected={selectedTag === tag}
-              style={{
-                marginRight: 8,
-                backgroundColor: selectedTag === tag ? theme.colors.primary : theme.colors.surface,
-                borderColor: theme.colors.primary,
-                borderWidth: selectedTag === tag ? 0 : 1,
-                height: 32,
-                borderRadius: 16,
-                justifyContent: 'center',
-              }}
-              textStyle={{
-                color: selectedTag === tag ? theme.colors.onPrimary : theme.colors.primary,
-                fontSize: 14,
-                fontWeight: '500',
-              }}
-              onPress={() => setSelectedTag(selectedTag === tag ? null : tag)}
-              accessibilityLabel={`Filter by tag: ${tag}`}
-            >
-              #{tag}
-            </Chip>
-          ))}
-        </ScrollView>
-      </View>
-      {/* Mini Apps List */}
-      <FlatList
-        data={filteredApps}
-        keyExtractor={(item: any) => item.name}
-        renderItem={renderAppCard}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={<Text style={[styles.emptyText, { color: theme.colors.onSurface + '77' }]}>No mini apps found.</Text>}
-        accessibilityLabel="Mini apps list"
-      />
-    </View>
+    <>
+      <StatusBar barStyle="light-content" backgroundColor="#b71c1c" />
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Market</Text>
+            <Text style={styles.headerSubtitle}>Discover amazing DApps</Text>
+          </View>
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchSection}>
+          <View style={styles.searchBar}>
+            <MaterialCommunityIcons name="magnify" size={20} color="#666" />
+            <Text style={styles.searchPlaceholder}>Search DApps...</Text>
+          </View>
+        </View>
+
+        {/* Categories */}
+        <View style={styles.categoriesSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesList}>
+            {CATEGORIES.map(renderCategoryChip)}
+          </ScrollView>
+        </View>
+
+        {/* Featured Apps */}
+        {selectedCategory === 'All' && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Featured Apps</Text>
+              <TouchableOpacity>
+                <Text style={styles.seeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredAppsList}>
+              {featuredApps.map(renderFeaturedApp)}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Apps List */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory === 'All' ? 'All Apps' : selectedCategory}
+            </Text>
+            <Text style={styles.appsCount}>{filteredApps.length} apps</Text>
+          </View>
+          <View style={styles.appsList}>
+            {filteredApps.map(renderAppCard)}
+          </View>
+        </View>
+      </ScrollView>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f7f8fa',
-    paddingHorizontal: 16,
-    paddingTop: 24,
+    backgroundColor: '#f8f9fa',
   },
   header: {
+    backgroundColor: '#b71c1c',
+    paddingTop: 50,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    alignItems: 'center',
+  },
+  headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#222',
-    letterSpacing: 0.5,
+    color: '#fff',
+    marginBottom: 5,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#fff',
+    opacity: 0.8,
+  },
+  searchSection: {
+    marginHorizontal: 20,
+    marginTop: -15,
+    marginBottom: 24,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    marginLeft: 8,
-    color: '#222',
-  },
-  tagsScroll: {
-    marginBottom: 8,
-  },
-  listContent: {
-    paddingBottom: 32,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginBottom: 18,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  screenshot: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    margin: 12,
-    backgroundColor: '#f0f0f0',
-  },
-  cardContent: {
-    flex: 1,
     paddingVertical: 12,
-    paddingRight: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    gap: 12,
   },
-  appName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#222',
-    marginBottom: 4,
+  searchPlaceholder: {
+    fontSize: 16,
+    color: '#999',
   },
-  appDesc: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+  categoriesSection: {
+    marginBottom: 24,
   },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+  categoriesList: {
+    paddingHorizontal: 20,
   },
-  tag: {
-    backgroundColor: '#e8f0fe',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginRight: 6,
-    marginBottom: 4,
+  categoryChip: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  tagSelected: {
+  selectedCategoryChip: {
     backgroundColor: '#b71c1c',
   },
-  tagText: {
-    fontSize: 12,
-    color: '#4285f4',
+  categoryChipText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
-  tagTextSelected: {
+  selectedCategoryChipText: {
     color: '#fff',
   },
-  emptyText: {
-    textAlign: 'center',
-    color: '#aaa',
-    fontSize: 16,
-    marginTop: 40,
+  section: {
+    marginHorizontal: 20,
+    marginBottom: 32,
   },
-  installedBadge: {
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  seeAllText: {
+    fontSize: 14,
+    color: '#b71c1c',
+    fontWeight: '600',
+  },
+  appsCount: {
+    fontSize: 14,
+    color: '#666',
+  },
+  featuredAppsList: {
+    paddingRight: 20,
+  },
+  appsList: {
+    paddingRight: 20,
+  },
+  featuredAppCard: {
+    width: 200,
+    height: 160,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginRight: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  featuredAppHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  featuredAppIcon: {
+    fontSize: 32,
+  },
+  featuredAppBadge: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  featuredAppBadgeText: {
+    fontSize: 10,
+    color: '#333',
+    fontWeight: 'bold',
+  },
+  featuredAppName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  featuredAppDescription: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  featuredAppFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e8f5e9',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 8,
+    gap: 4,
   },
-  installedText: {
-    color: '#43a047',
+  ratingText: {
     fontSize: 12,
-    marginLeft: 2,
+    color: '#666',
+    fontWeight: '600',
+  },
+  downloadsText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  appCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  appCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  appIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  appInfo: {
+    flex: 1,
+  },
+  appName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  appCategory: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  appRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  appDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  appCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceText: {
+    fontSize: 14,
+    color: '#4CAF50',
     fontWeight: '600',
   },
 });

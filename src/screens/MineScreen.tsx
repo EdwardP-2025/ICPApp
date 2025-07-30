@@ -1,563 +1,568 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Modal, Alert, ToastAndroid, Platform } from 'react-native';
-import { IconButton } from 'react-native-paper';
+import * as React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, StatusBar, Image } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../contexts/UserContext';
-import {launchImageLibrary} from 'react-native-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Linking } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
-import PrincipalDisplay from '../components/PrincipalDisplay';
-import { getIcpWalletService } from '../services/ICPWalletService';
-import { useNetwork } from '../contexts/NetworkContext';
+import { useState, useCallback } from 'react';
+import AvatarSelector from '../components/AvatarSelector';
 
-const JOIN_TIME_KEY = 'ICPApp_JoinTime';
-
-function truncatePrincipal(principal: string) {
-  if (!principal) return '';
-  if (principal.length <= 16) return principal;
-  return principal.slice(0, 8) + '...' + principal.slice(-6);
+interface MineScreenProps {
+  navigation?: any;
 }
 
-const MineScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
-  const { user, logout, setProfile, refreshBalance } = useUser();
-  const { network } = useNetwork();
-  const icpWalletService = getIcpWalletService(network);
-  const [editModalVisible, setEditModalVisible] = useState(false);
+const MineScreen: React.FC<MineScreenProps> = ({ navigation }) => {
+  const { user, logout, updateProfile, updatePreferences, clearSession, isSessionValid } = useUser();
   const [nickname, setNickname] = useState(user.nickname || '');
-  const [avatar, setAvatar] = useState(user.avatar);
-  const [joinTime, setJoinTime] = useState<string | null>(null);
-  const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
-  const [icpUsd, setIcpUsd] = useState<number>(0);
+  const [avatar, setAvatar] = useState<string | null>(user.avatar);
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
 
-  // Fetch ICP/USD price
-  const fetchICPPrice = async () => {
-    const price = await icpWalletService.getICPUSDPrice();
-    setIcpUsd(price);
-  };
-  useEffect(() => { fetchICPPrice(); }, []);
-
-  React.useEffect(() => {
-    const fetchJoinTime = async () => {
-      if (user.loggedIn) {
-        let stored = await AsyncStorage.getItem(JOIN_TIME_KEY);
-        if (!stored) {
-          const now = new Date().toISOString();
-          await AsyncStorage.setItem(JOIN_TIME_KEY, now);
-          setJoinTime(now);
-        } else {
-          setJoinTime(stored);
+  const handleLogout = useCallback(async () => {
+    Alert.alert(
+      'Confirm Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              Alert.alert('Logged Out', 'You have been successfully logged out.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          }
         }
-      } else {
-        setJoinTime(null);
-      }
-    };
-    fetchJoinTime();
-  }, [user.loggedIn]);
-
-  const handleEditProfile = () => {
-    setNickname(user.nickname || '');
-    setAvatar(user.avatar);
-    setEditModalVisible(true);
-  };
-
-  const handleSaveProfile = () => {
-    setProfile(nickname, avatar);
-    setEditModalVisible(false);
-  };
-
-  const handlePickAvatar = async () => {
-    const result = await launchImageLibrary({
-      mediaType: 'photo',
-      quality: 0.5,
-      includeBase64: true,
-    });
-    // Fix: 'canceled' does not exist on type 'ImagePickerResponse'.
-    // Use 'didCancel' instead, and ensure uri is defined before setting avatar.
-    if (!result.didCancel && result.assets && result.assets.length > 0) {
-      const uri = result.assets[0].uri ?? null;
-      setAvatar(uri);
-    }
-  };
-
-  const handleRefreshBalance = async () => {
-    if (isRefreshingBalance) return;
-    
-    setIsRefreshingBalance(true);
-    try {
-      await refreshBalance();
-    } catch (error) {
-      console.error('Error refreshing balance:', error);
-    } finally {
-      setIsRefreshingBalance(false);
-    }
-  };
-
-  const handleCopyPrincipal = () => {
-    if (user.principal) {
-      Clipboard.setString(user.principal);
-      if (Platform.OS === 'android') {
-        ToastAndroid.show('Principal copied!', ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Copied', 'Principal copied to clipboard!');
-      }
-    }
-  };
-
-  if (!user.loggedIn) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <View style={styles.centerContent}>
-          <TouchableOpacity style={styles.loginBtn} onPress={() => Linking.openURL('https://icp-ii-callback-qkzn.vercel.app')}>
-            <Text style={styles.loginBtnText}>Login with Internet Identity</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ height: 32 }} />
-        <View style={styles.introBox}>
-          <Text style={styles.introText}>Project Introduction{"\n"}and Help Button (Jump)</Text>
-        </View>
-      </View>
+      ]
     );
-  }
+  }, [logout]);
+
+  const handleEditProfile = useCallback(() => {
+    if (navigation) {
+      navigation.navigate('EditProfile');
+    } else {
+      Alert.prompt(
+        'Edit Nickname',
+        'Enter your new nickname:',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Save', 
+            onPress: (newNickname) => {
+              if (newNickname && newNickname.trim()) {
+                updateProfile({ nickname: newNickname.trim() });
+                setNickname(newNickname.trim());
+                Alert.alert('Success', 'Nickname updated successfully!');
+              }
+            }
+          }
+        ],
+        'plain-text',
+        nickname
+      );
+    }
+  }, [navigation, nickname, updateProfile]);
+
+  const handleAvatarSelected = useCallback((avatarUri: string) => {
+    const newAvatar = avatarUri || null;
+    setAvatar(newAvatar);
+    updateProfile({ avatar: newAvatar });
+  }, [updateProfile]);
+
+  const handleChangeAvatar = useCallback(() => {
+    setShowAvatarSelector(true);
+  }, []);
+
+  const handleSecuritySettings = useCallback(() => {
+    Alert.alert(
+      'Security Settings',
+      'Security settings will be implemented soon!',
+      [{ text: 'OK' }]
+    );
+  }, []);
+
+  const handleNotifications = useCallback(() => {
+    const currentNotifications = user.preferences?.notifications ?? true;
+    Alert.alert(
+      'Notifications',
+      `Notifications are currently ${currentNotifications ? 'enabled' : 'disabled'}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: currentNotifications ? 'Disable' : 'Enable',
+          onPress: () => {
+            updatePreferences({ notifications: !currentNotifications });
+            Alert.alert(
+              'Updated',
+              `Notifications ${!currentNotifications ? 'enabled' : 'disabled'} successfully!`
+            );
+      }
+        }
+      ]
+    );
+  }, [user.preferences?.notifications, updatePreferences]);
+
+  const handlePrivacy = useCallback(() => {
+    Alert.alert(
+      'Privacy Settings',
+      'Privacy settings will be implemented soon!',
+      [{ text: 'OK' }]
+    );
+  }, []);
+
+  const handleHelp = useCallback(() => {
+    Alert.alert(
+      'Help & Support',
+      'Help and support will be implemented soon!',
+      [{ text: 'OK' }]
+    );
+  }, []);
+
+  const handleAbout = useCallback(() => {
+    Alert.alert(
+      'About ICP App',
+      'Version 1.0.0\n\nInternet Computer Portal\nA secure wallet for the Internet Computer.',
+      [{ text: 'OK' }]
+    );
+  }, []);
+
+  const handleClearSession = useCallback(() => {
+    Alert.alert(
+      'Clear Session',
+      'This will clear all stored data. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearSession();
+              Alert.alert('Session Cleared', 'All stored data has been cleared.');
+    } catch (error) {
+              Alert.alert('Error', 'Failed to clear session. Please try again.');
+    }
+          }
+        }
+      ]
+    );
+  }, [clearSession]);
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Unknown';
+    return new Date(dateString).toLocaleDateString();
+  };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <StatusBar barStyle="light-content" backgroundColor="#b71c1c" />
+      {/* Header */}
       <View style={styles.header}>
-        <IconButton icon={() => <MaterialCommunityIcons name="fullscreen" color="#b71c1c" size={28} />} size={28} onPress={() => {}} style={{ marginRight: 8 }} />
-        <View style={styles.spacer} />
-        <IconButton icon={() => <MaterialCommunityIcons name="cog-off" color="#b71c1c" size={28} />} size={28} onPress={logout} />
+        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerSubtitle}>Manage your account</Text>
       </View>
 
       {/* Profile Card */}
       <View style={styles.profileCard}>
-        <View style={{ alignItems: 'center', marginBottom: 12 }}>
-          <TouchableOpacity style={styles.avatarContainerModern} onPress={handlePickAvatar}>
-            {user.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatarImageModern} />
+        <View style={styles.avatarContainer}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.avatar} />
             ) : (
-              <MaterialCommunityIcons name="account-circle" size={72} color="#b71c1c" />
-            )}
+            <View style={styles.avatarPlaceholder}>
+              <MaterialCommunityIcons name="account" size={40} color="#fff" />
+            </View>
+          )}
+          <TouchableOpacity style={styles.changeAvatarButton} onPress={handleChangeAvatar}>
+            <MaterialCommunityIcons name="camera" size={16} color="#fff" />
           </TouchableOpacity>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-            <Text style={styles.nickname}>{user.nickname || 'Nickname'}</Text>
-            <TouchableOpacity onPress={handleEditProfile} style={{ marginLeft: 8 }}>
-              <MaterialCommunityIcons name="pencil" size={20} color="#b71c1c" />
-            </TouchableOpacity>
-          </View>
         </View>
-        <View style={styles.divider} />
-        <View style={styles.principalRow}>
-          <PrincipalDisplay principal={user.principal || ''} label="Principal" />
+        
+        <View style={styles.profileInfo}>
+          <Text style={styles.nickname}>{user.nickname || 'User'}</Text>
+          <Text style={styles.principal}>{user.principal || 'No principal'}</Text>
+          {user.email && (
+            <Text style={styles.email}>{user.email}</Text>
+          )}
+          {user.location && (
+            <Text style={styles.location}>{user.location}</Text>
+          )}
+          <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
+            <MaterialCommunityIcons name="pencil" size={16} color="#b71c1c" />
+            <Text style={styles.editProfileText}>Edit Profile</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.joinTimeRow}>
-          <MaterialCommunityIcons name="calendar-month" size={14} color="#bbb" style={{ marginRight: 4 }} />
-          <Text style={styles.joinTimeModern}>
-            Joined {joinTime ? new Date(joinTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
+      </View>
+
+      {/* Session Info */}
+      <View style={styles.sessionContainer}>
+        <Text style={styles.sectionTitle}>Session Information</Text>
+        <View style={styles.sessionItem}>
+          <MaterialCommunityIcons name="calendar" size={16} color="#666" />
+          <Text style={styles.sessionLabel}>Joined:</Text>
+          <Text style={styles.sessionValue}>{formatDate(user.joinDate)}</Text>
+        </View>
+        <View style={styles.sessionItem}>
+          <MaterialCommunityIcons name="clock" size={16} color="#666" />
+          <Text style={styles.sessionLabel}>Last Login:</Text>
+          <Text style={styles.sessionValue}>{formatDate(user.lastLoginDate)}</Text>
+        </View>
+        <View style={styles.sessionItem}>
+          <MaterialCommunityIcons name="login" size={16} color="#666" />
+          <Text style={styles.sessionLabel}>Login Count:</Text>
+          <Text style={styles.sessionValue}>{user.loginCount || 0}</Text>
+        </View>
+        <View style={styles.sessionItem}>
+          <MaterialCommunityIcons name="shield-check" size={16} color="#666" />
+          <Text style={styles.sessionLabel}>Session Valid:</Text>
+          <Text style={[styles.sessionValue, { color: isSessionValid() ? '#4CAF50' : '#F44336' }]}>
+            {isSessionValid() ? 'Yes' : 'No'}
           </Text>
         </View>
       </View>
-      <View style={styles.divider} />
 
-      {/* Balance Card */}
-      <View style={styles.balanceCardModern}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <MaterialCommunityIcons name="alpha-i-box" size={36} color="#b71c1c" style={{ marginRight: 10 }} />
-          <View>
-            <Text style={styles.balanceLabelModern}>ICP Balance</Text>
-            <Text style={styles.balanceValueModern}>{user.balance.toFixed(4)} ICP</Text>
-            <Text style={styles.fiatValueModern}>${(user.balance * icpUsd).toFixed(2)} USD</Text>
+      {/* Profile Stats */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{user.balance.toFixed(4)}</Text>
+          <Text style={styles.statLabel}>ICP Balance</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{user.deviceBound ? 'Yes' : 'No'}</Text>
+          <Text style={styles.statLabel}>Device Bound</Text>
           </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{user.recoveryPhrase ? 'Set' : 'Not Set'}</Text>
+          <Text style={styles.statLabel}>Recovery Phrase</Text>
         </View>
       </View>
 
-      {/* Quick Actions */}
-      <View style={styles.quickActionsRow}>
-        <TouchableOpacity style={styles.quickActionBtn} onPress={handleRefreshBalance}>
-          <MaterialCommunityIcons name={isRefreshingBalance ? "loading" : "refresh"} size={28} color="#b71c1c" />
-          <Text style={styles.quickActionText}>Refresh</Text>
+      {/* Settings Menu */}
+      <View style={styles.settingsSection}>
+        <Text style={styles.sectionTitle}>Settings</Text>
+        
+                            <TouchableOpacity style={styles.menuItem} onPress={handleSecuritySettings}>
+                      <View style={styles.menuItemLeft}>
+                        <MaterialCommunityIcons name="cog" size={24} color="#b71c1c" />
+                        <Text style={styles.menuItemText}>Security</Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+                    </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem} onPress={handleNotifications}>
+          <View style={styles.menuItemLeft}>
+            <MaterialCommunityIcons name="bell" size={24} color="#b71c1c" />
+            <Text style={styles.menuItemText}>Notifications</Text>
+          </View>
+          <View style={styles.menuItemRight}>
+            <Text style={[styles.menuItemStatus, { color: user.preferences?.notifications ? '#4CAF50' : '#F44336' }]}>
+              {user.preferences?.notifications ? 'On' : 'Off'}
+            </Text>
+            <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+          </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.quickActionBtn} onPress={() => navigation.navigate('Wallet')}>
-          <MaterialCommunityIcons name="wallet" size={28} color="#b71c1c" />
-          <Text style={styles.quickActionText}>Wallet</Text>
+
+        <TouchableOpacity style={styles.menuItem} onPress={handlePrivacy}>
+          <View style={styles.menuItemLeft}>
+            <MaterialCommunityIcons name="lock" size={24} color="#b71c1c" />
+            <Text style={styles.menuItemText}>Privacy</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.quickActionBtn} onPress={logout}>
-          <MaterialCommunityIcons name="logout" size={28} color="#b71c1c" />
-          <Text style={styles.quickActionText}>Logout</Text>
+
+        <TouchableOpacity style={styles.menuItem} onPress={handleHelp}>
+          <View style={styles.menuItemLeft}>
+            <MaterialCommunityIcons name="help-circle" size={24} color="#b71c1c" />
+            <Text style={styles.menuItemText}>Help & Support</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem} onPress={handleAbout}>
+          <View style={styles.menuItemLeft}>
+            <MaterialCommunityIcons name="information" size={24} color="#b71c1c" />
+            <Text style={styles.menuItemText}>About</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color="#ccc" />
         </TouchableOpacity>
       </View>
 
-      {/* Edit Profile Modal */}
-      <Modal
-        visible={editModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setEditModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Profile</Text>
-            <TouchableOpacity style={styles.avatarEditContainer} onPress={handlePickAvatar}>
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.avatarImage} />
-              ) : (
-                <MaterialCommunityIcons name="account-circle" size={72} color="#b71c1c" />
-              )}
-              <Text style={styles.avatarEditText}>Change Avatar</Text>
+      {/* Action Buttons */}
+      <View style={styles.actionSection}>
+        <TouchableOpacity style={styles.clearSessionButton} onPress={handleClearSession}>
+          <MaterialCommunityIcons name="delete" size={20} color="#FF9800" />
+          <Text style={styles.clearSessionText}>Clear Session Data</Text>
             </TouchableOpacity>
-            <TextInput
-              style={styles.input}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="Enter nickname"
-              maxLength={24}
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)} style={styles.modalBtn}>
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveProfile} style={[styles.modalBtn, { backgroundColor: '#b71c1c' }] }>
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <MaterialCommunityIcons name="logout" size={20} color="#fff" />
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
+      <AvatarSelector
+        visible={showAvatarSelector}
+        onClose={() => setShowAvatarSelector(false)}
+        onAvatarSelected={handleAvatarSelected}
+        currentAvatar={user.avatar}
+      />
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: '#f0f2f5',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  spacer: {
-    flex: 1,
-  },
-  centerContent: {
-    alignItems: 'center',
-    marginVertical: 32,
-  },
-  loginBtn: {
-    minWidth: 240,
-    minHeight: 56,
-    borderRadius: 28,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#b71c1c',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  loginBtnText: {
-    color: '#b71c1c',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  introBox: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  introText: {
-    fontSize: 16,
-    color: '#333',
-    textAlign: 'center',
-  },
-  // Logged in UI styles
-  profileSection: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#f0f0f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  avatarText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  nickname: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#222',
-    marginBottom: 4,
-  },
-  principalLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 8,
-  },
-  principalValue: {
-    fontSize: 12,
-    color: '#444',
-    marginBottom: 4,
-  },
-  joinTime: {
-    fontSize: 14,
-    color: '#666',
-  },
-  walletSection: {
-    marginBottom: 24,
-  },
-  balanceContainer: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-  },
-  balanceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  balanceLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  balanceValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#222',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
     backgroundColor: '#b71c1c',
-    borderRadius: 8,
-    paddingVertical: 12,
+    paddingTop: 60,
+    paddingBottom: 30,
     alignItems: 'center',
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  dataSection: {
-    gap: 16,
-  },
-  dataBox: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 8,
-    padding: 20,
-    minHeight: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dataLabel: {
-    fontSize: 16,
-    color: '#666',
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    width: 300,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#222',
-    marginBottom: 16,
-  },
-  avatarEditContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarEditText: {
-    fontSize: 14,
-    color: '#b71c1c',
-    marginTop: 4,
-  },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    marginTop: 8,
-    backgroundColor: '#fafafa',
-  },
-  modalBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: '#eee',
-    marginLeft: 8,
-  },
-  modalBtnText: {
-    fontSize: 16,
-    color: '#b71c1c',
-    fontWeight: 'bold',
-  },
-  profileCard: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 24,
-    borderRadius: 18,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    marginBottom: 8,
-    alignItems: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 6,
   },
-  balanceCardModern: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 20,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  balanceLabelModern: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 2,
-  },
-  balanceValueModern: {
+  headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#222',
+    color: '#fff',
+    marginBottom: 8,
   },
-  fiatValueModern: {
-    fontSize: 15,
-    color: '#4CAF50',
-    marginTop: 2,
-    fontWeight: '600',
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#fff',
+    opacity: 0.9,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: 8,
-    width: '100%',
+  profileCard: {
+    margin: 20,
+    padding: 24,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  principalRow: {
+  avatarContainer: {
+    alignSelf: 'center',
+    marginBottom: 12,
+    position: 'relative',
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#b71c1c',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeAvatarButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#b71c1c',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  profileInfo: {
+    alignItems: 'center',
+  },
+  nickname: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  principal: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  email: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  location: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  editProfileButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
-    justifyContent: 'flex-end',
-    width: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
     gap: 6,
   },
-  copyIconBtn: {
-    marginLeft: 6,
-    padding: 2,
+  editProfileText: {
+    fontSize: 14,
+    color: '#b71c1c',
+    fontWeight: '600',
+  },
+  sessionContainer: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: '#fff',
+    padding: 20,
     borderRadius: 16,
-    backgroundColor: 'rgba(183,28,28,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  principalTextModern: {
-    color: '#888',
-    fontSize: 13,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    flex: 1,
-    marginRight: 4,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
   },
-  joinTimeRow: {
+  sessionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 6,
-    width: '100%',
-    gap: 2,
+    marginBottom: 12,
+    gap: 8,
   },
-  joinTimeModern: {
-    fontSize: 11,
-    color: '#bbb',
-    textAlign: 'right',
-    fontWeight: '500',
+  sessionLabel: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
   },
-  quickActionsRow: {
+  sessionValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600',
+  },
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  avatarContainerModern: {
-    borderRadius: 48,
-    borderWidth: 2,
-    borderColor: '#eee',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    backgroundColor: '#fff',
-    padding: 4,
-  },
-  avatarImageModern: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-  },
-  quickActionBtn: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+  },
+  settingsSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 1,
   },
-  quickActionBtnPressed: {
-    backgroundColor: 'rgba(183,28,28,0.08)',
+  menuItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  quickActionText: {
-    fontSize: 13,
-    color: '#b71c1c',
-    marginTop: 6,
+  menuItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  menuItemStatus: {
+    fontSize: 14,
     fontWeight: '600',
+  },
+  actionSection: {
+    marginHorizontal: 20,
+    marginBottom: 32,
+  },
+  clearSessionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#FF9800',
+    gap: 8,
+  },
+  clearSessionText: {
+    color: '#FF9800',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F44336',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#F44336',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  logoutButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
 

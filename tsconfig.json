@@ -1,12 +1,10 @@
 {
+  "extends": "@tsconfig/react-native/tsconfig.json",
   "compilerOptions": {
-    "strict": true,
-    "types": [],
-    "jsx": "react-native",
-    "lib": ["es2015", "es2020", "dom"],
-    "resolveJsonModule": true,
+    "lib": ["es2020", "dom"],
+    "target": "es2020",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "moduleResolution": "node"
+    "skipLibCheck": true
   }
 }

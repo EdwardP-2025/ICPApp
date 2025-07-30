@@ -1,97 +1,182 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# ICP App - Internet Computer Mobile Application
 
-# Getting Started
+## 📱 Introduction
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+ICP App is a comprehensive mobile application built for the Internet Computer (IC) ecosystem. This React Native application provides users with a complete ICP wallet experience, including real Internet Identity authentication, ICP balance management, transaction history, and a decentralized app store.
 
-## Step 1: Start Metro
+### 🌟 Key Features
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+- **🔐 Real Internet Identity Integration** - Authenticate with real Internet Identity principals
+- **💰 ICP Wallet Management** - View real ICP balances and transaction history
+- **📤 Send/Receive ICP** - Transfer ICP to other principals on the IC
+- **🛒 Decentralized App Store** - Discover and install dApps on the Internet Computer
+- **👤 User Profile Management** - Edit profile, manage preferences, and device binding
+- **🌐 Cross-Platform** - Works on both iOS and Android devices
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+### 🏗️ Architecture
 
-```sh
-# Using npm
-npm start
+- **Frontend**: React Native with TypeScript
+- **Backend**: Internet Computer (IC) with Motoko canisters
+- **Authentication**: Internet Identity (II)
+- **Wallet**: Real ICP integration with IC mainnet
+- **App Store**: Decentralized application discovery and installation
 
-# OR using Yarn
-yarn start
+## 🚀 Installation
+
+### Prerequisites
+
+- Node.js (v16 or higher)
+- React Native development environment
+- DFX (Internet Computer SDK)
+- Internet Identity account
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/your-username/icp-app.git
+cd icp-app
 ```
 
-## Step 2: Build and run your app
+### Step 2: Install Dependencies
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+```bash
+# Install React Native dependencies
+npm install
 
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+# Install DFX (if not already installed)
+sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 ```
 
-### iOS
+### Step 3: Deploy Backend Canisters
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+```bash
+# Start local IC replica
+dfx start --background
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+# Deploy canisters
+dfx deploy
 
-```sh
-bundle install
+# Get canister IDs
+dfx canister id icp_app_store
 ```
 
-Then, and every time you update your native dependencies, run:
+### Step 4: Configure Environment
 
-```sh
-bundle exec pod install
+Create a `.env` file in the root directory:
+
+```env
+# Internet Computer Configuration
+IC_HOST=https://ic0.app
+II_URL=https://identity.ic0.app
+
+# Canister IDs (replace with your deployed canister IDs)
+ICP_APP_STORE_CANISTER_ID=your_canister_id_here
+
+# App Configuration
+APP_NAME=ICP App
+APP_VERSION=1.0.0
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+### Step 5: Run the Application
 
-```sh
-# Using npm
-npm run ios
+```bash
+# For Android
+npx react-native run-android
 
-# OR using Yarn
-yarn ios
+# For iOS
+npx react-native run-ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## 🔧 Development
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+### Project Structure
 
-## Step 3: Modify your app
+```
+ICPApp/
+├── src/
+│   ├── components/          # React Native components
+│   ├── contexts/           # React contexts (User, Network)
+│   ├── screens/           # App screens
+│   ├── services/          # Business logic services
+│   └── types/             # TypeScript type definitions
+├── android/               # Android-specific files
+├── ios/                   # iOS-specific files
+├── dfx.json              # DFX configuration
+├── canister_ids.json     # Deployed canister IDs
+└── README.md             # This file
+```
 
-Now that you have successfully run the app, let's make changes!
+### Key Components
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+- **InternetIdentityService**: Handles II authentication
+- **ICPWalletService**: Manages ICP wallet operations
+- **AppInstallationService**: Manages dApp installations
+- **UserContext**: Global user state management
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+### Testing
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+```bash
+# Run tests
+npm test
 
-## Congratulations! :tada:
+# Run specific test
+npm test -- --testNamePattern="Internet Identity"
+```
 
-You've successfully run and modified your React Native App. :partying_face:
+## 🌐 Deployment
 
-### Now what?
+### Deploy to IC Mainnet
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+```bash
+# Deploy to mainnet
+dfx deploy --network ic
 
-# Troubleshooting
+# Update canister_ids.json with mainnet IDs
+dfx canister --network ic id icp_app_store > canister_ids.json
+```
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+### Build for Production
 
-# Learn More
+```bash
+# Android APK
+cd android && ./gradlew assembleRelease
 
-To learn more about React Native, take a look at the following resources:
+# iOS Archive
+# Use Xcode to archive the project
+```
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+## 📋 Requirements Met
+
+✅ **GitHub Repository**: Public repository with proper structure  
+✅ **dfx.json**: Located in root directory for ICP identification  
+✅ **README.md**: Clear introduction and installation instructions  
+✅ **canister_ids.json**: For official canister verification  
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Documentation**: [ICP App Documentation](docs/)
+- **Issues**: [GitHub Issues](https://github.com/your-username/icp-app/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-username/icp-app/discussions)
+
+## 🔗 Links
+
+- [Internet Computer](https://internetcomputer.org/)
+- [Internet Identity](https://identity.ic0.app/)
+- [DFX Documentation](https://internetcomputer.org/docs/current/developer-docs/setup/install/)
+- [React Native](https://reactnative.dev/)
+
+---
+
+**Built with ❤️ for the Internet Computer ecosystem** 

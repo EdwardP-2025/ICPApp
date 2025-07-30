@@ -1,176 +1,357 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+  Linking,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Clipboard from '@react-native-clipboard/clipboard';
-import { Transaction } from '../services/ICPWalletService';
+
+interface Transaction {
+  txId: string;
+  from: string;
+  to: string;
+  amount: number;
+  type: 'send' | 'receive';
+  status: 'completed' | 'pending' | 'failed';
+  timestamp: string;
+  fee?: number;
+  blockHeight?: number;
+  memo?: string;
+}
 
 interface TransactionDetailsModalProps {
   visible: boolean;
-  onClose: () => void;
   transaction: Transaction | null;
+  onClose: () => void;
 }
 
-const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = ({ visible, onClose, transaction }) => {
+const TransactionDetailsModal: React.FC<TransactionDetailsModalProps> = ({
+  visible,
+  transaction,
+  onClose,
+}) => {
+  const formatAmount = (amount: number) => {
+    return amount.toFixed(8);
+  };
+
+  const formatAddress = (address: string) => {
+    if (address.length > 20) {
+      return `${address.substring(0, 10)}...${address.substring(address.length - 10)}`;
+    }
+    return address;
+  };
+
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return '#4caf50';
+      case 'pending':
+        return '#ff9800';
+      case 'failed':
+        return '#f44336';
+      default:
+        return '#999';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'check-circle';
+      case 'pending':
+        return 'clock';
+      case 'failed':
+        return 'close-circle';
+      default:
+        return 'help-circle';
+    }
+  };
+
+  const handleViewOnExplorer = () => {
+    if (transaction?.blockHeight) {
+      const url = `https://dashboard.internetcomputer.org/transaction/${transaction.blockHeight}`;
+      Linking.openURL(url);
+    }
+  };
+
+  const handleCopyTxId = () => {
+    if (transaction?.txId) {
+      console.log('Copying transaction ID:', transaction.txId);
+    }
+  };
+
   if (!transaction) return null;
 
-  const handleCopyTxId = async () => {
-    if (transaction.txId) {
-      await Clipboard.setString(transaction.txId);
-      if (Platform.OS === 'android') {
-        // @ts-ignore
-        if (global.ToastAndroid) global.ToastAndroid.show('Transaction ID copied!', global.ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Copied', 'Transaction ID copied to clipboard!');
-      }
-    }
-  };
-
-  const handleViewExplorer = () => {
-    if (transaction.txId) {
-      // Replace with actual explorer URL if available
-      const url = `https://dashboard.internetcomputer.org/transaction/${transaction.txId}`;
-      // Open in browser
-      if (Platform.OS === 'web') {
-        window.open(url, '_blank');
-      } else {
-        // @ts-ignore
-        if (global.Linking) global.Linking.openURL(url);
-      }
-    }
-  };
-
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <View style={styles.card}>
+        <View style={styles.modalContainer}>
           <View style={styles.header}>
-            <Text style={styles.title}>Transaction Details</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityLabel="Close">
-              <MaterialCommunityIcons name="close" size={24} color="#b71c1c" />
+            <Text style={styles.headerTitle}>Transaction Details</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <MaterialCommunityIcons name="close" size={24} color="#666" />
             </TouchableOpacity>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Type:</Text>
-            <Text style={[styles.value, { color: transaction.type === 'send' ? '#b71c1c' : '#4CAF50' }]}>{transaction.type === 'send' ? 'Sent' : 'Received'}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Amount:</Text>
-            <Text style={styles.value}>{transaction.amount} {transaction.symbol}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Status:</Text>
-            <Text style={[styles.value, { color: transaction.status === 'success' ? '#4CAF50' : '#b71c1c' }]}>{transaction.status}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Date:</Text>
-            <Text style={styles.value}>{transaction.date}</Text>
-          </View>
-          {transaction.from && (
-            <View style={styles.detailRow}>
-              <Text style={styles.label}>From:</Text>
-              <Text style={styles.value} numberOfLines={1} ellipsizeMode="middle">{transaction.from}</Text>
+
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Transaction Status */}
+            <View style={styles.statusSection}>
+              <View style={styles.statusRow}>
+                <MaterialCommunityIcons
+                  name={getStatusIcon(transaction.status)}
+                  size={24}
+                  color={getStatusColor(transaction.status)}
+                />
+                <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
+                  {transaction.status.toUpperCase()}
+                </Text>
+              </View>
+              <Text style={styles.transactionType}>
+                {transaction.type === 'send' ? 'Sent' : 'Received'}
+              </Text>
             </View>
-          )}
-          {transaction.to && (
-            <View style={styles.detailRow}>
-              <Text style={styles.label}>To:</Text>
-              <Text style={styles.value} numberOfLines={1} ellipsizeMode="middle">{transaction.to}</Text>
+
+            {/* Amount Section */}
+            <View style={styles.amountSection}>
+              <Text style={styles.sectionTitle}>Amount</Text>
+              <Text style={[
+                styles.amountText,
+                { color: transaction.type === 'send' ? '#b71c1c' : '#4caf50' }
+              ]}>
+                {transaction.type === 'send' ? '-' : '+'}{formatAmount(transaction.amount)} ICP
+              </Text>
+              {transaction.fee && (
+                <Text style={styles.feeText}>
+                  Fee: {formatAmount(transaction.fee)} ICP
+                </Text>
+              )}
             </View>
-          )}
-          <View style={styles.detailRow}>
-            <Text style={styles.label}>Tx ID:</Text>
-            <Text style={[styles.value, styles.txId]} numberOfLines={1} ellipsizeMode="middle">{transaction.txId}</Text>
-            <TouchableOpacity onPress={handleCopyTxId} style={styles.iconBtn} accessibilityLabel="Copy TxId">
-              <MaterialCommunityIcons name="content-copy" size={18} color="#b71c1c" />
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={styles.explorerBtn} onPress={handleViewExplorer} disabled={!transaction.txId} accessibilityLabel="View on Explorer">
-            <MaterialCommunityIcons name="open-in-new" size={18} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.explorerBtnText}>View on Explorer</Text>
-          </TouchableOpacity>
+
+            {/* Transaction Information */}
+            <View style={styles.infoSection}>
+              <Text style={styles.sectionTitle}>Transaction Information</Text>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Transaction ID:</Text>
+                <View style={styles.infoValueContainer}>
+                  <Text style={styles.infoValue}>{transaction.txId}</Text>
+                  <TouchableOpacity onPress={handleCopyTxId} style={styles.copyButton}>
+                    <MaterialCommunityIcons name="content-copy" size={16} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>From:</Text>
+                <Text style={styles.infoValue}>{formatAddress(transaction.from)}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>To:</Text>
+                <Text style={styles.infoValue}>{formatAddress(transaction.to)}</Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Date:</Text>
+                <Text style={styles.infoValue}>{formatDate(transaction.timestamp)}</Text>
+              </View>
+
+              {transaction.blockHeight && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Block Height:</Text>
+                  <Text style={styles.infoValue}>{transaction.blockHeight}</Text>
+                </View>
+              )}
+
+              {transaction.memo && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Memo:</Text>
+                  <Text style={styles.infoValue}>{transaction.memo}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Network Information */}
+            <View style={styles.networkSection}>
+              <Text style={styles.sectionTitle}>Network Information</Text>
+              <Text style={styles.networkText}>
+                This transaction was processed on the Internet Computer mainnet.
+              </Text>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.actionsSection}>
+              {transaction.blockHeight && (
+                <TouchableOpacity style={styles.actionButton} onPress={handleViewOnExplorer}>
+                  <MaterialCommunityIcons name="external-link" size={20} color="#2196f3" />
+                  <Text style={styles.actionButtonText}>View on Explorer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = {
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  card: {
+  modalContainer: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    margin: 20,
+    maxHeight: '80%',
     width: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 22,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#222',
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold' as const,
+    color: '#333',
   },
-  closeBtn: {
+  closeButton: {
     padding: 4,
-    borderRadius: 16,
-    backgroundColor: 'rgba(183,28,28,0.08)',
   },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  content: {
+    padding: 20,
+  },
+  statusSection: {
+    alignItems: 'center' as const,
+    marginBottom: 24,
+    paddingVertical: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+  },
+  statusRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     marginBottom: 8,
   },
-  label: {
+  statusText: {
+    fontSize: 16,
+    fontWeight: 'bold' as const,
+    marginLeft: 8,
+    textTransform: 'uppercase' as const,
+  },
+  transactionType: {
     fontSize: 14,
-    color: '#888',
-    width: 70,
-    fontWeight: '500',
+    color: '#666',
   },
-  value: {
-    fontSize: 15,
-    color: '#222',
-    flexShrink: 1,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  amountSection: {
+    alignItems: 'center' as const,
+    marginBottom: 24,
+    paddingVertical: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
   },
-  txId: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold' as const,
+    color: '#333',
+    marginBottom: 12,
+  },
+  amountText: {
+    fontSize: 24,
+    fontWeight: 'bold' as const,
+    marginBottom: 4,
+  },
+  feeText: {
     fontSize: 12,
-    color: '#b71c1c',
-    marginLeft: 2,
+    color: '#666',
+  },
+  infoSection: {
+    marginBottom: 24,
+  },
+  infoRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500' as const,
+  },
+  infoValue: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600' as const,
     flex: 1,
+    textAlign: 'right' as const,
   },
-  iconBtn: {
-    marginLeft: 2,
-    padding: 2,
+  infoValueContainer: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flex: 1,
+    justifyContent: 'flex-end' as const,
   },
-  explorerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#b71c1c',
-    borderRadius: 8,
-    paddingVertical: 10,
+  copyButton: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  networkSection: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 12,
+  },
+  networkText: {
+    fontSize: 12,
+    color: '#1976d2',
+    lineHeight: 18,
+  },
+  actionsSection: {
+    marginBottom: 16,
+  },
+  actionButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    marginTop: 18,
-    alignSelf: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
   },
-  explorerBtnText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 15,
-    marginLeft: 2,
+  actionButtonText: {
+    fontSize: 14,
+    color: '#2196f3',
+    fontWeight: '600' as const,
+    marginLeft: 8,
   },
-});
+};
 
-export default TransactionDetailsModal; 
+export default TransactionDetailsModal;

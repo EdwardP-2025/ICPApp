@@ -2,18 +2,17 @@ import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Dimensions, Alert, ActivityIndicator, Platform, Animated, Easing, Linking, Modal, TextInput, KeyboardAvoidingView, Platform as RNPlatform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
 import { ToastAndroid } from 'react-native';
 import axios from 'axios';
 import { imageMap } from '../assets/imageMap';
-import * as RNFS from 'react-native-fs';
+import RNFS from 'react-native-fs';
 import DeviceInfo from 'react-native-device-info';
 import IntentLauncher, { IntentConstant } from 'react-native-intent-launcher';
 
 const PLACEHOLDER_IMAGE = require('../../assets/icon.png');
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const INSTALLED_APPS_KEY = 'installedMiniApps';
-const REMOTE_REVIEWS_URL = 'https://mock-icp-reviews-api.example.com/reviews'; // Replace with real endpoint if available
+const REMOTE_REVIEWS_URL = 'https://mock-icp-reviews-api.example.com/reviews';
 
 const getRandomAvatar = (seed: string) => `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(seed)}`;
 
@@ -36,15 +35,12 @@ const AppDetailScreen = ({ route, navigation }: any) => {
 
   const REVIEWS_KEY = `reviews_${app.name.replace(/\s+/g, '_')}`;
 
-  // Check if app is installed (Android only, Expo Go compatible, Play Store inference method)
   const checkInstalled = async () => {
     if (Platform.OS === 'android' && app.name === 'Plug Wallet') {
       let status = false;
       try {
         const playStoreUrl = 'market://details?id=co.psychedelic.plug';
         const supported = await Linking.canOpenURL(playStoreUrl);
-        // If supported, the Play Store can open, so the app is NOT installed
-        // If not supported, the app IS installed
         status = !supported;
         console.log('Plug Wallet Play Store canOpenURL:', supported, '=> installed:', status);
       } catch (e) {
@@ -62,7 +58,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
     checkInstalled();
   }, [app.name]);
 
-  // Add navigation focus listener to re-check installed status
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       checkInstalled();
@@ -121,13 +116,11 @@ const AppDetailScreen = ({ route, navigation }: any) => {
     }
   };
 
-  // Real APK install or open in browser
   const handleInstall = async () => {
     if (!app.apkUrl) {
       showToast('No install or download URL provided.');
       return;
     }
-    // If it's a Play Store or website link, open in browser
     if (!app.apkUrl.endsWith('.apk')) {
       console.log('Install from Play Store clicked for', app.name, 'with packageName:', app.packageName);
       console.log('Current installed status before redirect:', installed);
@@ -142,8 +135,8 @@ const AppDetailScreen = ({ route, navigation }: any) => {
     setDownloadProgress(0);
     try {
       const apkFilename = app.apkUrl.split('/').pop();
-      const localUri = `${RNFS.CachesDirectoryPath}/${apkFilename}`;
-      const downloadResult = await RNFS.downloadFile({
+      const localUri = RNFS.CachesDirectoryPath + '/' + apkFilename;
+      const downloadResumable = RNFS.downloadFile({
         fromUrl: app.apkUrl,
         toFile: localUri,
         progress: (progress) => {
@@ -153,15 +146,15 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             percent = bytesWritten / contentLength;
           }
           setDownloadProgress(percent);
-        },
-        progressDivider: 1,
-      }).promise;
-      if (downloadResult.statusCode !== 200) throw new Error('Download failed');
+        }
+      });
+      const { statusCode } = await downloadResumable.promise;
+      const uri = statusCode === 200 ? localUri : null;
+      if (!uri) throw new Error('Download failed');
       setDownloadProgress(1);
-      // Launch APK installer
       IntentLauncher.startActivity({
         action: 'android.intent.action.VIEW',
-        data: 'file://' + localUri,
+        data: uri,
         type: 'application/vnd.android.package-archive',
         flags: 1,
       });
@@ -170,10 +163,9 @@ const AppDetailScreen = ({ route, navigation }: any) => {
       showToast('Failed to download or install APK.');
     }
     setActionLoading(false);
-    setTimeout(checkInstalled, 3000); // Re-check after a short delay
+    setTimeout(checkInstalled, 3000);
   };
 
-  // Real APK open
   const handleOpen = async () => {
     if (Platform.OS === 'android' && app.name === 'Plug Wallet') {
       const scheme = (globalThis as any).plugWalletScheme;
@@ -183,7 +175,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
         return;
       }
       if (app.packageName) {
-        // Try to open via package (custom dev build)
         try {
           IntentLauncher.startApp({ packageName: app.packageName });
           return;
@@ -191,17 +182,14 @@ const AppDetailScreen = ({ route, navigation }: any) => {
           console.log('IntentLauncher.startApp error:', e);
         }
       }
-      // Fallback to Play Store
       Linking.openURL('https://play.google.com/store/apps/details?id=co.psychedelic.plug');
       return;
     }
-    // Default open logic for other apps
     if (app.website) {
       Linking.openURL(app.website);
     }
   };
 
-  // Real APK uninstall
   const handleUninstall = async () => {
     if (Platform.OS !== 'android') {
       showToast('Uninstall is only supported on Android.');
@@ -263,7 +251,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
     const updatedReviews = [newReview, ...reviews];
     setReviews(updatedReviews);
     await AsyncStorage.setItem(REVIEWS_KEY, JSON.stringify(updatedReviews));
-    // Simulate remote POST
     try {
       await axios.post(`${REMOTE_REVIEWS_URL}/${encodeURIComponent(app.name)}`, newReview);
     } catch (e) {}
@@ -308,7 +295,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
   return (
     <View style={styles.gradientBg}>
       <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32, alignItems: 'center' }} showsVerticalScrollIndicator={false}>
-        {/* App Icon with Gradient */}
         <View style={styles.iconGradientWrap}>
           <View style={styles.iconGradient} />
           <View style={styles.iconOuterCircle}>
@@ -338,7 +324,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             </Animated.View>
           </View>
         </View>
-        {/* Screenshot Carousel */}
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -368,7 +353,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             );
           })}
         </ScrollView>
-        {/* Carousel Dots */}
         <View style={styles.carouselDots}>
           {screenshots.map((_: string | null, idx: number) => (
             <View
@@ -378,9 +362,7 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             />
           ))}
         </View>
-        {/* Divider */}
         <View style={styles.divider} />
-        {/* App Card */}
         <View style={styles.infoCard}>
           <Text style={styles.header} accessibilityLabel={`App name: ${app.name}`}>{app.name}</Text>
           <Text style={styles.subtitle}>{app.subtitle || 'Mini App'}</Text>
@@ -408,7 +390,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             </TouchableOpacity>
           )}
         </View>
-        {/* Add status badge rendering above the install/uninstall button */}
         {Platform.OS === 'android' && (
           <View style={{ alignItems: 'center', marginBottom: 8 }}>
             {app.packageName ? (
@@ -436,11 +417,10 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             ) : null}
           </View>
         )}
-        {/* Install/Uninstall/Open Button */}
         <Animated.View style={{ width: '88%', marginTop: 18, transform: [{ scale: buttonScale }] }}>
           {Platform.OS === 'android' ? (
             app.packageName && installed ? (
-              <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flexDirection: 'row' }}>
                 <TouchableOpacity
                   style={[styles.button, styles.buttonUninstall, styles.buttonShadow, { flex: 1 }]}
                   onPress={handleUninstall}
@@ -490,7 +470,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             </Text>
           )}
         </Animated.View>
-        {/* Reviews & Ratings */}
         <View style={styles.reviewsCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
             <Text style={styles.ratingValue}>{averageRating}</Text>
@@ -539,7 +518,6 @@ const AppDetailScreen = ({ route, navigation }: any) => {
             )
           )}
         </View>
-        {/* Review Modal */}
         <Modal
           visible={reviewModalVisible}
           animationType="slide"
